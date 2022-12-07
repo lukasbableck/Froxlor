@@ -24,7 +24,7 @@ use Froxlor\Api\Commands\DomainZones as DomainZones;
 // This file is being included in admin_domains and customer_domains
 // and therefore does not need to require lib/init.php
 
-$domain_id = isset($_GET['domain_id']) ? (int) $_GET['domain_id'] : null;
+$domain_id = isset($_GET['domain_id']) ? (int) $_GET['domain_id'] : (isset($_POST['domain_id']) ? (int)$_POST['domain_id'] : null);
 
 $record = isset($_POST['record']['record']) ? trim($_POST['record']['record']) : null;
 $type = isset($_POST['record']['type']) ? $_POST['record']['type'] : 'A';
@@ -56,12 +56,11 @@ if ($action == 'add_record' && ! empty($_POST)) {
 	}
 } elseif ($action == 'delete') {
 	// remove entry
-	$entry_id = isset($_GET['id']) ? (int) $_GET['id'] : 0;
-	if ($entry_id > 0) {
+	if ($id > 0) {
 		if (isset($_POST['send']) && $_POST['send'] == 'send') {
 			try {
 				DomainZones::getLocal($userinfo, array(
-					'entry_id' => $entry_id,
+					'entry_id' => $id,
 					'id' => $domain_id
 				))->delete();
 				// success message (inline)
@@ -73,7 +72,8 @@ if ($action == 'add_record' && ! empty($_POST)) {
 			\Froxlor\UI\HTML::askYesNo('dnsentry_reallydelete', $filename, array(
 				'page' => $page,
 				'action' => $action,
-				'id' => $id
+				'id' => $id,
+				'domain_id' => $domain_id
 			), $id);
 		}
 	}
