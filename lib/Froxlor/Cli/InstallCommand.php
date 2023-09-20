@@ -93,7 +93,8 @@ final class InstallCommand extends Command
 			return self::SUCCESS;
 		}
 
-		if (file_exists(Froxlor::getInstallDir() . '/lib/userdata.inc.php')) {
+		$userdata = Froxlor::getInstallDir() . '/lib/userdata.inc.php';
+		if (file_exists($userdata) && filesize($userdata) > 0) {
 			$output->writeln("<error>froxlor seems to be installed already.</>");
 			return self::INVALID;
 		}
