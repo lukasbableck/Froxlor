@@ -385,11 +385,13 @@ final class ConfigServices extends CliCommand
 					foreach ($confarr as $action) {
 						switch ($action['type']) {
 							case "install":
-								$output->writeln("Installing required packages");
-								$result = null;
-								passthru(strtr($action['content'], $replace_arr), $result);
-								if (strlen($result) > 1) {
-									echo $result;
+								if(!is_file("/.dockerenv")){
+									$output->writeln("Installing required packages");
+									$result = null;
+									passthru(strtr($action['content'], $replace_arr), $result);
+									if (strlen($result) > 1) {
+										echo $result;
+									}
 								}
 								break;
 							case "command":
