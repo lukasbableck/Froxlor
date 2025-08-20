@@ -104,17 +104,15 @@ class FroxlorLogger
 						self::$ml->pushHandler(new SyslogHandler('froxlor', LOG_USER, Logger::DEBUG));
 						break;
 					case 'file':
+						$setings_logfile = Settings::Get('logger.logfile');
+						if (empty($setings_logfile)) {
+							Settings::Set('logger.logfile', 'froxlor.log');
+						}
 						$logger_logfile = FileDir::makeCorrectFile(Froxlor::getInstallDir() . '/logs/' . Settings::Get('logger.logfile'));
 						// is_writable needs an existing file to check if it's actually writable
-						@touch($logger_logfile);
-						if (empty($logger_logfile) || !is_writable($logger_logfile)) {
-							Settings::Set('logger.logfile', 'froxlor.log');
-							$logger_logfile = FileDir::makeCorrectFile(Froxlor::getInstallDir() . '/logs/froxlor.log');
-							@touch($logger_logfile);
-							if (empty($logger_logfile) || !is_writable($logger_logfile)) {
-								// not writable in our own directory? Skip
-								break;
-							}
+						if (!@touch($logger_logfile) || !is_writable($logger_logfile)) {
+							// not writable in our own directory? Skip
+							break;
 						}
 						self::$ml->pushHandler(new StreamHandler($logger_logfile, Logger::DEBUG));
 						break;
@@ -166,7 +164,7 @@ class FroxlorLogger
 	 * @param int $type
 	 * @param ?string $text
 	 */
-	public function logAction($action = FroxlorLogger::USR_ACTION, int $type = LOG_NOTICE, string $text = null)
+	public function logAction($action = FroxlorLogger::USR_ACTION, int $type = LOG_NOTICE, ?string $text = null)
 	{
 		// not logging normal stuff if not set to "paranoid" logging
 		if (!self::$crondebug_flag && Settings::Get('logger.severity') == '1' && $type > LOG_NOTICE) {
@@ -176,6 +174,9 @@ class FroxlorLogger
 		if (empty(self::$ml)) {
 			$this->initMonolog();
 		}
+
+		// clean log-text
+		$text = preg_replace("/[^\w @#\"':.,()\[\]+\-_\/\\\!]/i", "_", $text);
 
 		if (self::$crondebug_flag || ($action == FroxlorLogger::CRON_ACTION && $type <= LOG_WARNING)) {
 			echo "[" . $this->getLogLevelDesc($type) . "] " . $text . PHP_EOL;

@@ -34,27 +34,6 @@ use voku\helper\AntiXSS;
 
 class PhpHelper
 {
-	private static $sort_key = 'id';
-	private static $sort_type = SORT_STRING;
-
-	/**
-	 * sort an array by either natural or string sort and a given index where the value for comparison is found
-	 *
-	 * @param array $list
-	 * @param string $key
-	 *
-	 * @return bool
-	 */
-	public static function sortListBy(array &$list, string $key = 'id'): bool
-	{
-		self::$sort_type = Settings::Get('panel.natsorting') == 1 ? SORT_NATURAL : SORT_STRING;
-		self::$sort_key = $key;
-		return usort($list, [
-			'self',
-			'sortListByGivenKey'
-		]);
-	}
-
 	/**
 	 * Wrapper around htmlentities to handle arrays, with the advantage that you
 	 * can select which fields should be handled by htmlentities
@@ -102,35 +81,6 @@ class PhpHelper
 	}
 
 	/**
-	 * Replaces Strings in an array, with the advantage that you
-	 * can select which fields should be str_replace'd
-	 *
-	 * @param string|array $search String or array of strings to search for
-	 * @param string|array $replace String or array to replace with
-	 * @param string|array $subject String or array The subject array
-	 * @param string|array $fields string The fields which should be checked for, separated by spaces
-	 *
-	 * @return string|array The str_replace'd array
-	 */
-	public static function strReplaceArray($search, $replace, $subject, $fields = '')
-	{
-		if (is_array($subject)) {
-			if (!is_array($fields)) {
-				$fields = self::arrayTrim(explode(' ', $fields));
-			}
-			foreach ($subject as $field => $value) {
-				if ((!is_array($fields) || empty($fields)) || (in_array($field, $fields))) {
-					$subject[$field] = str_replace($search, $replace, $value);
-				}
-			}
-		} else {
-			$subject = str_replace($search, $replace, $subject);
-		}
-
-		return $subject;
-	}
-
-	/**
 	 * froxlor php error handler
 	 *
 	 * @param int $errno
@@ -170,9 +120,8 @@ class PhpHelper
 			$err_display .= '</pre></p>';
 			// end later
 			$err_display .= '</div>';
-			// check for more existing errors
-			$errors = isset(UI::twig()->getGlobals()['global_errors']) ? UI::twig()->getGlobals()['global_errors'] : "";
-			UI::twig()->addGlobal('global_errors', $errors . $err_display);
+			// set errors to session
+			ErrorBag::addError($err_display);
 			// return true to ignore php standard error-handler
 			return true;
 		}
@@ -220,8 +169,11 @@ class PhpHelper
 			if (is_dir($data_dirname)) {
 				$data_dirhandle = opendir($data_dirname);
 				while (false !== ($data_filename = readdir($data_dirhandle))) {
-					if ($data_filename != '.' && $data_filename != '..' && $data_filename != '' && substr($data_filename,
-							-4) == '.php') {
+					if ($data_filename != '.'
+						&& $data_filename != '..'
+						&& $data_filename != ''
+						&& substr($data_filename, -4) == '.php'
+					) {
 						$data_files[] = $data_dirname . $data_filename;
 					}
 				}
@@ -247,7 +199,7 @@ class PhpHelper
 	 * @param string|null $nameserver set additional resolver nameserver to use (e.g. 1.1.1.1)
 	 * @return bool|array
 	 */
-	public static function gethostbynamel6(string $host, bool $try_a = true, string $nameserver = null)
+	public static function gethostbynamel6(string $host, bool $try_a = true, ?string $nameserver = null)
 	{
 		$ips = [];
 
@@ -335,7 +287,8 @@ class PhpHelper
 		?string $max = '',
 		string $system = 'si',
 		string $retstring = '%01.2f %s'
-	): string {
+	): string
+	{
 		// Pick units
 		$systems = [
 			'si' => [
@@ -415,11 +368,15 @@ class PhpHelper
 	 */
 	public static function recursive_array_search(
 		string $needle,
-		array $haystack,
-		array &$keys = [],
+		array  $haystack,
+		array  &$keys = [],
 		string $currentKey = ''
-	): bool {
+	): bool
+	{
 		foreach ($haystack as $key => $value) {
+			if (empty($value)) {
+				continue;
+			}
 			$pathkey = empty($currentKey) ? $key : $currentKey . '.' . $key;
 			if (is_array($value)) {
 				self::recursive_array_search($needle, $value, $keys, $pathkey);
@@ -458,6 +415,14 @@ class PhpHelper
 			'directory_password',
 			'ftp_password',
 			'mysql_password',
+			'mysql_root_pass',
+			'mysql_unprivileged_pass',
+			'admin_pass',
+			'admin_pass_confirm',
+			'panel_password_special_char',
+			'old_password',
+			'new_password',
+			'new_password_confirm',
 		];
 		if (!empty($global)) {
 			$tmp = $global;
@@ -470,19 +435,6 @@ class PhpHelper
 	}
 
 	/**
-	 * @param array $a
-	 * @param array $b
-	 * @return int
-	 */
-	private static function sortListByGivenKey(array $a, array $b): int
-	{
-		if (self::$sort_type == SORT_NATURAL) {
-			return strnatcasecmp($a[self::$sort_key], $b[self::$sort_key]);
-		}
-		return strcasecmp($a[self::$sort_key], $b[self::$sort_key]);
-	}
-
-	/**
 	 * Generate php file from array.
 	 *
 	 * @param array $array
@@ -490,7 +442,7 @@ class PhpHelper
 	 * @param bool $asReturn
 	 * @return string
 	 */
-	public static function parseArrayToPhpFile(array $array, string $comment = null, bool $asReturn = false): string
+	public static function parseArrayToPhpFile(array $array, ?string $comment = null, bool $asReturn = false): string
 	{
 		$str = sprintf("<?php\n// %s\n\n", $comment ?? 'autogenerated froxlor file');
 
@@ -512,7 +464,7 @@ class PhpHelper
 	 * @param int $depth
 	 * @return string
 	 */
-	public static function parseArrayToString(array $array, string $key = null, int $depth = 1): string
+	public static function parseArrayToString(array $array, ?string $key = null, int $depth = 1): string
 	{
 		$str = '';
 		if (!is_null($key)) {
@@ -556,5 +508,18 @@ class PhpHelper
 			$tab .= "\t";
 		}
 		return $tab . $str;
+	}
+
+	public static function array_merge_recursive_distinct(array &$array1, array &$array2)
+	{
+		$merged = $array1;
+		foreach ($array2 as $key => &$value) {
+			if (is_array($value) && isset($merged[$key]) && is_array($merged[$key])) {
+				$merged[$key] = self::array_merge_recursive_distinct($merged[$key], $value);
+			} else {
+				$merged[$key] = $value;
+			}
+		}
+		return $merged;
 	}
 }

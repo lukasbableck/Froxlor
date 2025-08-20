@@ -26,6 +26,7 @@
 namespace Froxlor\Cron\Dns;
 
 use Froxlor\Database\Database;
+use Froxlor\Domain\Domain;
 use Froxlor\FileDir;
 use Froxlor\FroxlorLogger;
 use Froxlor\PhpHelper;
@@ -116,85 +117,6 @@ abstract class DnsBase
 		}
 	}
 
-	public function writeDKIMconfigs()
-	{
-		if (Settings::Get('dkim.use_dkim') == '1') {
-			if (!file_exists(FileDir::makeCorrectDir(Settings::Get('dkim.dkim_prefix')))) {
-				$this->logger->logAction(FroxlorLogger::CRON_ACTION, LOG_NOTICE, 'mkdir -p ' . escapeshellarg(FileDir::makeCorrectDir(Settings::Get('dkim.dkim_prefix'))));
-				FileDir::safe_exec('mkdir -p ' . escapeshellarg(FileDir::makeCorrectDir(Settings::Get('dkim.dkim_prefix'))));
-			}
-
-			$dkimdomains = '';
-			$dkimkeys = '';
-			$result_domains_stmt = Database::query("
-				SELECT `id`, `domain`, `dkim`, `dkim_id`, `dkim_pubkey`, `dkim_privkey`
-				FROM `" . TABLE_PANEL_DOMAINS . "` WHERE `dkim` = '1' ORDER BY `id` ASC
-			");
-
-			while ($domain = $result_domains_stmt->fetch(PDO::FETCH_ASSOC)) {
-				$privkey_filename = FileDir::makeCorrectFile(Settings::Get('dkim.dkim_prefix') . '/dkim' . $domain['dkim_id'] . Settings::Get('dkim.privkeysuffix'));
-				$pubkey_filename = FileDir::makeCorrectFile(Settings::Get('dkim.dkim_prefix') . '/dkim' . $domain['dkim_id'] . '.public');
-
-				if ($domain['dkim_privkey'] == '' || $domain['dkim_pubkey'] == '') {
-					$max_dkim_id_stmt = Database::query("SELECT MAX(`dkim_id`) as `max_dkim_id` FROM `" . TABLE_PANEL_DOMAINS . "`");
-					$max_dkim_id = $max_dkim_id_stmt->fetch(PDO::FETCH_ASSOC);
-					$domain['dkim_id'] = (int)$max_dkim_id['max_dkim_id'] + 1;
-					$privkey_filename = FileDir::makeCorrectFile(Settings::Get('dkim.dkim_prefix') . '/dkim' . $domain['dkim_id'] . Settings::Get('dkim.privkeysuffix'));
-					FileDir::safe_exec('openssl genrsa -out ' . escapeshellarg($privkey_filename) . ' ' . Settings::Get('dkim.dkim_keylength'));
-					$domain['dkim_privkey'] = file_get_contents($privkey_filename);
-					FileDir::safe_exec("chmod 0640 " . escapeshellarg($privkey_filename));
-					$pubkey_filename = FileDir::makeCorrectFile(Settings::Get('dkim.dkim_prefix') . '/dkim' . $domain['dkim_id'] . '.public');
-					FileDir::safe_exec('openssl rsa -in ' . escapeshellarg($privkey_filename) . ' -pubout -outform pem -out ' . escapeshellarg($pubkey_filename));
-					$domain['dkim_pubkey'] = file_get_contents($pubkey_filename);
-					FileDir::safe_exec("chmod 0664 " . escapeshellarg($pubkey_filename));
-					$upd_stmt = Database::prepare("
-						UPDATE `" . TABLE_PANEL_DOMAINS . "` SET
-						`dkim_id` = :dkimid,
-						`dkim_privkey` = :privkey,
-						`dkim_pubkey` = :pubkey
-						WHERE `id` = :id
-					");
-					$upd_data = [
-						'dkimid' => $domain['dkim_id'],
-						'privkey' => $domain['dkim_privkey'],
-						'pubkey' => $domain['dkim_pubkey'],
-						'id' => $domain['id']
-					];
-					Database::pexecute($upd_stmt, $upd_data);
-				}
-
-				if (!file_exists($privkey_filename) && $domain['dkim_privkey'] != '') {
-					$privkey_file_handler = fopen($privkey_filename, "w");
-					fwrite($privkey_file_handler, $domain['dkim_privkey']);
-					fclose($privkey_file_handler);
-					FileDir::safe_exec("chmod 0640 " . escapeshellarg($privkey_filename));
-				}
-
-				if (!file_exists($pubkey_filename) && $domain['dkim_pubkey'] != '') {
-					$pubkey_file_handler = fopen($pubkey_filename, "w");
-					fwrite($pubkey_file_handler, $domain['dkim_pubkey']);
-					fclose($pubkey_file_handler);
-					FileDir::safe_exec("chmod 0644 " . escapeshellarg($pubkey_filename));
-				}
-
-				$dkimdomains .= $domain['domain'] . "\n";
-				$dkimkeys .= "*@" . $domain['domain'] . ":" . $domain['domain'] . ":" . $privkey_filename . "\n";
-			}
-
-			$dkimdomains_filename = FileDir::makeCorrectFile(Settings::Get('dkim.dkim_prefix') . '/' . Settings::Get('dkim.dkim_domains'));
-			$dkimdomains_file_handler = fopen($dkimdomains_filename, "w");
-			fwrite($dkimdomains_file_handler, $dkimdomains);
-			fclose($dkimdomains_file_handler);
-			$dkimkeys_filename = FileDir::makeCorrectFile(Settings::Get('dkim.dkim_prefix') . '/' . Settings::Get('dkim.dkim_dkimkeys'));
-			$dkimkeys_file_handler = fopen($dkimkeys_filename, "w");
-			fwrite($dkimkeys_file_handler, $dkimkeys);
-			fclose($dkimkeys_file_handler);
-
-			FileDir::safe_exec(escapeshellcmd(Settings::Get('dkim.dkimrestart_command')));
-			$this->logger->logAction(FroxlorLogger::CRON_ACTION, LOG_INFO, 'Dkim-milter reloaded');
-		}
-	}
-
 	protected function getDomainList()
 	{
 		$result_domains_stmt = Database::query("
@@ -210,7 +132,6 @@ abstract class DnsBase
 				`d`.`dkim`,
 				`d`.`dkim_id`,
 				`d`.`dkim_pubkey`,
-				`d`.`ismainbutsubto`,
 				`c`.`loginname`,
 				`c`.`guid`
 			FROM
@@ -219,7 +140,7 @@ abstract class DnsBase
 			WHERE
 				`d`.`isbinddomain` = '1'
 			ORDER BY
-				`d`.`domain` ASC
+				LENGTH(`d`.`domain`), `d`.`domain` ASC
 		");
 
 		$domains = [];
@@ -241,11 +162,10 @@ abstract class DnsBase
 				'bindserial' => date('Ymd') . '00',
 				'dkim' => '0',
 				'iswildcarddomain' => '1',
-				'ismainbutsubto' => '0',
 				'zonefile' => '',
 				'froxlorhost' => '1'
 			];
-			$domains['none'] = $hostname_arr;
+			$domains[0] = $hostname_arr;
 		}
 
 		if (empty($domains)) {
@@ -257,18 +177,23 @@ abstract class DnsBase
 			if (!isset($domains[$key]['children'])) {
 				$domains[$key]['children'] = [];
 			}
-			if ($domains[$key]['ismainbutsubto'] > 0) {
-				if (isset($domains[$domains[$key]['ismainbutsubto']])) {
-					$domains[$domains[$key]['ismainbutsubto']]['children'][] = $domains[$key]['id'];
-				} else {
-					$domains[$key]['ismainbutsubto'] = 0;
+			if (!isset($domains[$key]['is_child'])) {
+				$domains[$key]['is_child'] = false;
+			}
+			$children = Domain::getMainSubdomainIds($key);
+			if (count($children) > 0) {
+				foreach ($children as $child) {
+					if (isset($domains[$child])) {
+						$domains[$key]['children'][] = $domains[$child]['id'];
+						$domains[$child]['is_child'] = true;
+					}
 				}
 			}
 		}
 
-		$this->logger->logAction(FroxlorLogger::CRON_ACTION, LOG_DEBUG, str_pad('domId', 9, ' ') . str_pad('domain', 40, ' ') . 'ismainbutsubto ' . str_pad('parent domain', 40, ' ') . "list of child domain ids");
+		$this->logger->logAction(FroxlorLogger::CRON_ACTION, LOG_DEBUG, str_pad('domId', 9, ' ') . str_pad('domain', 40, ' ') . "list of child domain ids");
 		foreach ($domains as $domain) {
-			$logLine = str_pad($domain['id'], 9, ' ') . str_pad($domain['domain'], 40, ' ') . str_pad($domain['ismainbutsubto'], 15, ' ') . str_pad(((isset($domains[$domain['ismainbutsubto']])) ? $domains[$domain['ismainbutsubto']]['domain'] : '-'), 40, ' ') . join(', ', $domain['children']);
+			$logLine = str_pad($domain['id'], 9, ' ') . str_pad($domain['domain'], 40, ' ') . join(', ', $domain['children']);
 			$this->logger->logAction(FroxlorLogger::CRON_ACTION, LOG_DEBUG, $logLine);
 		}
 

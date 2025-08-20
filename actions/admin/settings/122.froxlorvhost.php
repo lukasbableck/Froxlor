@@ -176,6 +176,11 @@ return [
 					'varname' => 'mod_fcgid_httpuser',
 					'type' => 'text',
 					'default' => 'froxlorlocal',
+					'string_emptyallowed' => false,
+					'plausibility_check_method' => [
+						'\\Froxlor\\Validate\\Check',
+						'checkSystemUsername'
+					],
 					'save_method' => 'storeSettingWebserverFcgidFpmUser',
 					'websrv_avail' => [
 						'apache2'
@@ -193,6 +198,7 @@ return [
 					'type' => 'text',
 					'default' => 'froxlorlocal',
 					'save_method' => 'storeSettingField',
+					'string_emptyallowed' => false,
 					'websrv_avail' => [
 						'apache2'
 					],
@@ -243,6 +249,11 @@ return [
 					'varname' => 'vhost_httpuser',
 					'type' => 'text',
 					'default' => 'froxlorlocal',
+					'string_emptyallowed' => false,
+					'plausibility_check_method' => [
+						'\\Froxlor\\Validate\\Check',
+						'checkSystemUsername'
+					],
 					'save_method' => 'storeSettingWebserverFcgidFpmUser',
 					'visible' => Settings::Get('phpfpm.enabled') && call_user_func([
 						'\Froxlor\Settings\FroxlorVhostSettings',
@@ -256,6 +267,7 @@ return [
 					'varname' => 'vhost_httpgroup',
 					'type' => 'text',
 					'default' => 'froxlorlocal',
+					'string_emptyallowed' => false,
 					'save_method' => 'storeSettingField',
 					'visible' => Settings::Get('phpfpm.enabled') && call_user_func([
 						'\Froxlor\Settings\FroxlorVhostSettings',

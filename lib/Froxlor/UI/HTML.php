@@ -25,16 +25,17 @@
 
 namespace Froxlor\UI;
 
+use Froxlor\Settings;
+
 class HTML
 {
 
 	/**
 	 * Build Navigation Sidebar
 	 *
-	 * @param
-	 *            array navigation data
-	 * @param
-	 *            array userinfo the userinfo of the user
+	 * @param array $navigation data
+	 * @param array $userinfo the userinfo of the user
+	 *
 	 * @return array the content of the navigation bar according to user-permissions
 	 */
 	public static function buildNavigation(array $navigation, array $userinfo)
@@ -42,12 +43,19 @@ class HTML
 		$returnvalue = [];
 
 		// sanitize user-given input (url-manipulation)
-		if (isset($_GET['page']) && is_array($_GET['page'])) {
-			$_GET['page'] = (string)$_GET['page'][0];
+		$req_page = Request::get('page');
+		if (!empty($req_page) && is_array($req_page)) {
+			$req_page = (string)array_shift($req_page);
 		}
-		if (isset($_GET['action']) && is_array($_GET['action'])) {
-			$_GET['action'] = (string)$_GET['action'][0];
+		// need to preserve this
+		$_GET['page'] = $req_page;
+
+		$req_action = Request::get('action');
+		if (!empty($req_action) && is_array($req_action)) {
+			$req_action = (string)array_shift($req_action);
 		}
+		// need to preserve this
+		$_GET['action'] = $req_action;
 
 		foreach ($navigation as $box) {
 			if ((!isset($box['show_element']) || $box['show_element'] === true) && (!isset($box['required_resources']) || $box['required_resources'] == '' || (isset($userinfo[$box['required_resources']]) && ((int)$userinfo[$box['required_resources']] > 0 || $userinfo[$box['required_resources']] == '-1')))) {
@@ -67,7 +75,7 @@ class HTML
 							}
 
 							if (
-								((empty($_GET['page']) && substr_count($element['url'], "page=") == 0) || (isset($_GET['page']) && substr_count($element['url'], "page=" . $_GET['page']) > 0))
+								((empty($req_page) && substr_count($element['url'], "page=") == 0) || (!empty($req_page) && substr_count($element['url'], "page=" . $req_page) > 0))
 								&& substr_count($element['url'], basename($_SERVER["SCRIPT_FILENAME"])) > 0
 							) {
 								$active = true;
@@ -116,7 +124,7 @@ class HTML
 						'label' => $navlabel,
 						'icon' => $icon,
 						'items' => $navigation_links,
-						'active' => $box_active
+						'active' => ((int)Settings::Get('panel.menu_collapsed') == 0 ? 1 : $box_active)
 					];
 				}
 			}
@@ -218,6 +226,19 @@ class HTML
 				'chk_text' => $chk_text,
 				'show' => $show_checkbox
 			]
+		]);
+		exit();
+	}
+
+	public static function askOTP(string $text, string $targetfile, array $params = [], string $replacer = '', array $back_link = [])
+	{
+		$text = lng('question.' . $text, [htmlspecialchars($replacer)]);
+
+		Panel\UI::view('form/otpquestion.html.twig', [
+			'action' => $targetfile,
+			'url_params' => $params,
+			'question' => $text,
+			'back_link' => $back_link
 		]);
 		exit();
 	}

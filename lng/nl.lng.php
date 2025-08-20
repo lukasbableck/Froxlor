@@ -328,41 +328,6 @@ return [
 		'mail_quota' => 'Mailquotum',
 		'sendinfomail' => 'Stuur gegevens naar mij via e-mail',
 	],
-	'dkim' => [
-		'dkim_prefix' => [
-			'title' => 'Prefix',
-			'description' => 'Geef het pad naar de DKIM RSA-files alsook naar de configuratie van de Milter-plugin',
-		],
-		'dkim_domains' => [
-			'title' => 'Bestandsnaam domeinen',
-			'description' => '<em>Bestandsnaam</em> van het DKIM Domains-parameter zoals aangegeven in de configuratie van dkim-milter',
-		],
-		'dkim_dkimkeys' => [
-			'title' => 'KeyList filename',
-			'description' => '<em>Bestandsnaam</em> van het DKIM KeyList-parameter zoals aangegeven in de configuratie van dkim-milter',
-		],
-		'dkimrestart_command' => [
-			'title' => 'Herstart-commando voor Milter',
-			'description' => 'Geef het commando om de milter-plugin te herstarten',
-		],
-		'use_dkim' => [
-			'title' => 'Activeer ondersteuning voor DKIM?',
-			'description' => 'Wilt u gebruikmaken van Domain Keys (DKIM) systeem?',
-		],
-		'dkim_algorithm' => [
-			'title' => 'Toegestane hash-algoritmen',
-			'description' => 'Toegestane hash-algoritmen, kies "Alle" voor alle algoritmen of 1 of meerdere van onderstaande',
-		],
-		'dkim_servicetype' => 'Type services',
-		'dkim_keylength' => [
-			'title' => 'Lengte sleutel',
-			'description' => 'Let op: Indien u deze waarde wijzigt, dient u allen geheime en publieke sleutels in "%s" te verwijderen',
-		],
-		'dkim_notes' => [
-			'title' => 'Notities voor DKIM',
-			'description' => 'Notities die van belang kunnen zijn voor mensen, bijvoorbeeld een URL als http://www.dnswatch.info. Geen enkel programma zal deze informatie verwerken. Deze informatie dient schaars te zijn gezien de beperkte ruimte in DNS. Dit is bedoeld voor beheerders, niet voor eindgebruikers.',
-		],
-	],
 	'dns' => [
 		'destinationip' => 'IP domein',
 		'standardip' => 'Standaard server IP',
@@ -400,9 +365,6 @@ return [
 		'aliasdomains' => 'Alternatieve domeinnamen',
 		'redirectifpathisurl' => 'Doorverwijzingscode (standaard: leegt)',
 		'redirectifpathisurlinfo' => 'U dient deze alleen op te geven indien u een URL als pad hebt opgegeven',
-		'issubof' => 'Dit domein is een subdomein van een ander domein',
-		'issubofinfo' => 'U dient het correcte domein op te geven indien u een subdomein als volledig domein wilt (bijvoorbeeld als u "www.domain.tld" wilt gebruiken, dan geeft u hier "domain.tld")',
-		'nosubtomaindomain' => 'Geen subdomein van volledig domein',
 	],
 	'emails' => [
 		'description' => 'Hier kunt u e-mail adressen maken en wijzigen.<br />Een account is net als een brievenbus voor uw huis. Als iemand u mail stuurt wordt dit op uw account bezorgd.<br /><br />Om uw emails te downloaden moet u het volgende instellen in uw mailprogramma: (De <i>schuingedrukte</i> gegevens moeten gewijzigd worden in wat u ingegeven heeft!)<br />Servernaam: <b><i>Domeinnaam</i></b><br />Gebruikersnaam: <b><i>Account naam / E-mailadres</i></b><br />Wachtwoord: <b><i>het door u ingegeven wachtwoord</i></b>',
@@ -657,6 +619,7 @@ Met vriendelijke groet, uw beheerder',
 	],
 	'message' => [
 		'norecipients' => 'Er is geen email verstuurd omdat er geen ontvangers in de database zijn',
+		'success' => 'Bericht verzonden naar ontvangers %s',
 	],
 	'mysql' => [
 		'databasename' => 'gebruiker/database naam',
@@ -741,7 +704,6 @@ Met vriendelijke groet, uw beheerder',
 		'admin_quotas_reallywipe' => 'Weet u zeker dat u alle quota wilt verwijderen? Dit is niet terug te draaien!',
 		'admin_quotas_reallyenforce' => 'Weet u zeker dat u quota wilt afdwingen? Dit is niet terug te draaien!',
 		'phpsetting_reallydelete' => 'Weet u zeker dat u deze instellingen wilt verwijderen? Alle domeinen die deze configuratie gebruiken zullen terugvallen op de standaardinstellingen.',
-		'remove_subbutmain_domains' => 'Verwijder ook domeinen die als volledige domeinen zijn opgegeven maar een subdomein zijn van dit domein?',
 		'customer_reallyunlock' => 'Weet u zeker dat u klant %s? wilt ontgrendelen',
 	],
 	'serversettings' => [
@@ -1108,7 +1070,6 @@ Met vriendelijke groet, uw beheerder',
 		'spf_entry' => 'SPF regel voor alle domeinen',
 	],
 	'success' => [
-		'messages_success' => 'Bericht verzonden naar ontvangers %s',
 		'success' => 'Informatie',
 		'clickheretocontinue' => 'Klik hier om verder te gaan',
 		'settingssaved' => 'De instellingen zijn opgeslagen.',

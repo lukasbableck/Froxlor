@@ -10,9 +10,11 @@ logs/*
 .settings/
 .test/
 *.diff
+*.patch
 *~
 .well-known
 .idea
+.DS_Store
 *.iml
 img/
 vendor/
@@ -21,8 +23,6 @@ fonts/
 templates/*
 !templates/index.html
 !templates/Froxlor/
-templates/Froxlor/assets/mix-manifest.json
-templates/Froxlor/assets/css/
-templates/Froxlor/assets/js/
-templates/Froxlor/assets/webfonts/
+templates/Froxlor/build/
+templates/Froxlor/hot
 !templates/misc/

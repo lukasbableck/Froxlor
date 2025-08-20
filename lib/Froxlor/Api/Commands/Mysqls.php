@@ -54,7 +54,7 @@ class Mysqls extends ApiCommand implements ResourceEntity
 	 * @param string $description
 	 *            optional, description for database
 	 * @param string $custom_suffix
-	 *            optional, name for database
+	 *            optional, name for database if customer.mysqlprefix setting is set to "DBNAME"
 	 * @param bool $sendinfomail
 	 *            optional, send created resource-information to customer, default: false
 	 * @param int $customerid
@@ -110,9 +110,12 @@ class Mysqls extends ApiCommand implements ResourceEntity
 			$dbm = new DbManager($this->logger());
 
 			if (strtoupper(Settings::Get('customer.mysqlprefix')) == 'DBNAME' && !empty($databasename)) {
-				$username = $dbm->createDatabase($newdb_params['loginname'] . '_' . $databasename, $password, $dbserver);
+				if (strlen($newdb_params['loginname'] . '_' . $databasename) > Database::getSqlUsernameLength()) {
+					throw new Exception("Database name cannot be longer than " . (Database::getSqlUsernameLength() - strlen($newdb_params['loginname'] . '_')) . " characters.", 406);
+				}
+				$username = $dbm->createDatabase($newdb_params['loginname'] . '_' . $databasename, $password, $dbserver, 0, $newdb_params['loginname']);
 			} else {
-				$username = $dbm->createDatabase($newdb_params['loginname'], $password, $dbserver, $newdb_params['mysql_lastaccountnumber']);
+				$username = $dbm->createDatabase($newdb_params['loginname'], $password, $dbserver, $newdb_params['mysql_lastaccountnumber'], $newdb_params['loginname']);
 			}
 
 			// we've checked against the password in dbm->createDatabase
@@ -181,7 +184,7 @@ class Mysqls extends ApiCommand implements ResourceEntity
 				try {
 					$this->mailer()->Subject = $mail_subject;
 					$this->mailer()->AltBody = $mail_body;
-					$this->mailer()->msgHTML(str_replace("\n", "<br />", $mail_body));
+					$this->mailer()->Body = str_replace("\n", "<br />", $mail_body);
 					$this->mailer()->addAddress($userinfo['email'], User::getCorrectUserSalutation($userinfo));
 					$this->mailer()->send();
 				} catch (\PHPMailer\PHPMailer\Exception $e) {
@@ -538,7 +541,7 @@ class Mysqls extends ApiCommand implements ResourceEntity
 		// Begin root-session
 		Database::needRoot(true, $result['dbserver'], false);
 		$dbm = new DbManager($this->logger());
-		$dbm->getManager()->deleteDatabase($result['databasename']);
+		$dbm->getManager()->deleteDatabase($result['databasename'], $customer['loginname']);
 		Database::needRoot(false);
 		// End root-session
 

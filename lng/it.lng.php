@@ -660,41 +660,6 @@ return [
 		'services' => 'Servizi',
 	],
 	'diskquota' => 'Quota',
-	'dkim' => [
-		'dkim_prefix' => [
-			'title' => 'Prefisso',
-			'description' => 'Si prega di specificare il percorso della DKIM RSA-files, nonch¸ i file di configurazione per il plugin Milter',
-		],
-		'dkim_domains' => [
-			'title' => 'Domini nomefile',
-			'description' => '<em>Nome file</em> del parametro DKIM Domains specificata nella configurazione dkim-milter',
-		],
-		'dkim_dkimkeys' => [
-			'title' => 'Nome file del KeyList',
-			'description' => '<em>Nome file</em> del parametro DKIM KeyList specificata nella configurazione dkim-milter',
-		],
-		'dkimrestart_command' => [
-			'title' => 'Milter commando riavvio',
-			'description' => 'Si prega di specificare il comando per riavviare il servizio DKIM milter',
-		],
-		'use_dkim' => [
-			'title' => 'Attivare il supporto DKIM?',
-			'description' => 'Vuoi utilizzare il sistema Domain Keys (DKIM)?',
-		],
-		'dkim_algorithm' => [
-			'title' => 'Ammessi Algoritmi Hash',
-			'description' => 'Definire gli algoritmi di hash permessi, scegliere "Tutti" per permettere tutti gli algoritmi oppure uno o più tra gli altri algoritmi disponibili',
-		],
-		'dkim_servicetype' => 'Tipi di Servizio',
-		'dkim_keylength' => [
-			'title' => 'Lunghezza Chiave',
-			'description' => 'Attenzione: Se si modifica questo valore è necessario eliminare tutte le chiavi private/pubbliche in "%s"',
-		],
-		'dkim_notes' => [
-			'title' => 'Note DKIM',
-			'description' => 'Nota potrebbe essere di interesse, es. un URL come http://www.dnswatch.info. Nessuna interpretazione è fatta da nessun programma. Questo tag deve essere usato con parsimonia per ragioni di spazio nel DNS. Questo è destinato ad essere utilizzato dagli amministratori e non dagli utenti finali.',
-		],
-	],
 	'dns' => [
 		'destinationip' => 'Dominio IP',
 		'a_record' => 'A-Record (IPv6 optionale)',
@@ -732,9 +697,6 @@ return [
 		'aliasdomains' => 'Alias domini',
 		'redirectifpathisurl' => 'Codice di redirezione (Predefinito: vuoto)',
 		'redirectifpathisurlinfo' => 'È necessario selezionare uno di questi se hai inserito un URL come percorso',
-		'issubof' => 'Questo dominio è un sottodominio di un altro dominio',
-		'issubofinfo' => 'Devi impostare correttamente questo dominio se si desidera aggiungere un sottodominio come dominio completo (es. si vuole aggiungere "www.domain.tld", devi selezionare qui "domain.tld")',
-		'nosubtomaindomain' => 'No sottodominio di un dominio completo',
 		'ipandport_multi' => [
 			'title' => 'Indirizzi IP',
 			'description' => 'Specifica uno o più indirizzi IP per il dominio.<br /><br /><div class="text-danger">NOTA: L\'indirizzo IP non può essere modificato quando il dominio è configurato come <strong>alias-domain</strong> di un altro dominio.</div>',
@@ -1081,6 +1043,7 @@ Cordiali Saluti, Team Froxlor',
 	],
 	'message' => [
 		'norecipients' => 'Nessuna e-mail è stata inviata perch¸ non ci sono i destinatari nel database',
+		'success' => 'Inviato correttamente il messaggio a %s recipients',
 	],
 	'mysql' => [
 		'description' => 'Qui puoi creare e modificare il tuo database MySQL<br />Le modifiche sono istantanee e puoi usare subito il database.<br />Nel menù a sinistra trovi phpMyAdmin con cui puoi amministrare il tuo database.<br /><br />Per usare i database nei tuoi script php usa le seguenti impostazioni: (Le parole in <i>corsivo</i> devono essere modificate con quello che hai scritto!)<br />Hostname: <b><SQL_HOST></b><br />Utente: <b><i>Nome database</i></b><br />Password: <b><i>La password che hai scelto</i></b><br />Database: <b><i>Nome database</i></b>',
@@ -1196,7 +1159,6 @@ Cordiali Saluti, Team Froxlor',
 		'admin_quotas_reallywipe' => 'Sei sicuro di voler cancellare tutti i limiti dalla tabella mail_users? Questa operazione non può essere annullata!',
 		'admin_quotas_reallyenforce' => 'Sei sicuro di voler impostare il limite predefinito a tutti gli utenti? Questa operazione non può essere annullata!',
 		'phpsetting_reallydelete' => 'Do you really want to delete these settings? All domains which use these settings currently will be changed to the default config.',
-		'remove_subbutmain_domains' => 'Rimuover anche i domini che sono stati aggiunti come domini completi, ma quali sono i sottodomini di questo dominio?',
 		'customer_reallyunlock' => 'Sei sicuro di voler sbloccare il cliente %s?',
 		'admin_customer_alsoremovemail' => 'Eliminare completamente i dati della posta elettronica dal filesystem??',
 		'admin_customer_alsoremoveftphomedir' => 'Rimuovere anche la cartella homedir dell\'utente FTP?',
@@ -1742,7 +1704,6 @@ Nota: Perfavore <b>sii sicuro</b> di usare lo stesso nome di file come per il cr
 		'spf_entry' => 'Impostazioni SPF per tutti i domini',
 	],
 	'success' => [
-		'messages_success' => 'Inviato correttamente il messaggio a %s recipients',
 		'success' => 'Informazioni',
 		'clickheretocontinue' => 'Clicca qui per continuare',
 		'settingssaved' => 'Le impostazioni sono state salvate con successo.',

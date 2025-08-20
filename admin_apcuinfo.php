@@ -33,6 +33,7 @@
 
 use Froxlor\FroxlorLogger;
 use Froxlor\UI\Panel\UI;
+use Froxlor\UI\Request;
 use Froxlor\UI\Response;
 use Froxlor\UI\HTML;
 
@@ -42,7 +43,7 @@ require __DIR__ . '/lib/init.php';
 $horizontal_bar_size = 950; // 1280px window width
 
 if ($action == 'delete' && function_exists('apcu_clear_cache') && $userinfo['change_serversettings'] == '1') {
-	if ($_POST['send'] == 'send') {
+	if (Request::post('send') == 'send') {
 		apcu_clear_cache();
 		$log->logAction(FroxlorLogger::ADM_ACTION, LOG_INFO, "cleared APCu cache");
 		header('Location: ' . $linker->getLink([
@@ -62,7 +63,7 @@ if ($action == 'delete' && function_exists('apcu_clear_cache') && $userinfo['cha
 }
 
 if (!function_exists('apcu_cache_info') || !function_exists('apcu_sma_info')) {
-	Response::standardError(lng('error.no_apcuinfo'));
+	Response::standardError('no_apcuinfo');
 }
 
 if ($page == 'showinfo' && $userinfo['change_serversettings'] == '1') {
@@ -117,7 +118,7 @@ if ($page == 'showinfo' && $userinfo['change_serversettings'] == '1') {
 		'uptime' => duration($cache['start_time'])
 	];
 
-	$overview['mem_used_percentage'] = number_format(($overview['mem_used'] / $overview['mem_avail']) * 100, 1);
+	$overview['mem_used_percentage'] = number_format(($overview['mem_used'] / $overview['mem_size']) * 100, 1);
 	$overview['num_hits_percentage'] = number_format(($overview['num_hits'] / $overview['num_hits_and_misses']) * 100,
 		1);
 	$overview['num_misses_percentage'] = number_format(($overview['num_misses'] / $overview['num_hits_and_misses']) * 100,

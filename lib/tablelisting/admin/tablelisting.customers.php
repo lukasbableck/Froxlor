@@ -26,8 +26,8 @@
 use Froxlor\UI\Callbacks\Customer;
 use Froxlor\UI\Callbacks\Impersonate;
 use Froxlor\UI\Callbacks\ProgressBar;
-use Froxlor\UI\Callbacks\Text;
 use Froxlor\UI\Callbacks\Style;
+use Froxlor\UI\Callbacks\Text;
 use Froxlor\UI\Listing;
 
 return [
@@ -148,6 +148,12 @@ return [
 				'field' => 'api_allowed',
 				'class' => 'text-center',
 				'callback' => [Text::class, 'boolean'],
+			],
+			'c.type_2fa' => [
+				'label' => lng('2fa.type_2fa'),
+				'field' => 'type_2fa',
+				'class' => 'text-center',
+				'callback' => [Text::class, 'type2fa'],
 			],
 		],
 		'visible_columns' => Listing::getVisibleColumnsForListing('customer_list', [

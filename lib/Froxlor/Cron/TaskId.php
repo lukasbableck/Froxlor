@@ -67,6 +67,12 @@ final class TaskId
 	const DELETE_FTP_DATA = 8;
 
 	/**
+	 * TYPE=9 MEANS THAT SOMETHING ANTISPAM RELATED HAS CHANGED.
+	 * REBUILD froxlor_settings.conf IF ANTISPAM IS ENABLED
+	 */
+	const REBUILD_RSPAMD = 9;
+
+	/**
 	 * TYPE=10 Set the filesystem - quota
 	 */
 	const CREATE_QUOTA = 10;
@@ -82,9 +88,14 @@ final class TaskId
 	const DELETE_DOMAIN_SSL = 12;
 
 	/**
-	 * TYPE=20 COSTUMERBACKUP
+	 * TYPE=13 set configuration for selected services regarding the use of Let's Encrypt certificate
 	 */
-	const CREATE_CUSTOMER_BACKUP = 20;
+	const UPDATE_LE_SERVICES = 13;
+
+	/**
+	 * TYPE=20 CUSTUMER DATA DUMP
+	 */
+	const CREATE_CUSTOMER_DATADUMP = 20;
 
 	/**
 	 * TYPE=99 REGENERATE CRON

@@ -25,6 +25,8 @@
 
 namespace Froxlor\UI;
 
+use Froxlor\CurrentUser;
+use Froxlor\FroxlorTwoFactorAuth;
 use Froxlor\Settings;
 use Froxlor\Validate\Check;
 
@@ -183,6 +185,25 @@ class Form
 				}
 			}
 
+			// OTP security validation for sensitive settings
+			if (!Settings::Config('disable_otp_security_check') && isset($fielddata['required_otp']) && $do_show) {
+				$otp_enabled_system = (bool)Settings::Get('2fa.enabled');
+				$otp_enabled_user = (int)CurrentUser::getField('type_2fa') != 0;
+				$do_show = !$fielddata['required_otp'] || ($otp_enabled_system && $otp_enabled_user);
+				if (!$do_show) {
+					$fielddata['note'] = lng('serversettings.option_requires_otp');
+					if (!$otp_enabled_system) {
+						$fielddata['disabled'] = true;
+						$fielddata['note'] .= '<br>' . lng('2fa.2fa_not_activated');
+					} elseif (!$otp_enabled_user) {
+						$fielddata['disabled'] = true;
+						$fielddata['note'] .= '<br>' . lng('2fa.2fa_not_activated_for_user');
+					}
+					// show field in any case
+					$do_show = true;
+				}
+			}
+
 			if (!$do_show) {
 				$fielddata['visible'] = false;
 			}
@@ -196,7 +217,8 @@ class Form
 	{
 		$returnvalue = [];
 		if (is_array($fielddata) && isset($fielddata['type']) && $fielddata['type'] == 'select') {
-			if ((!isset($fielddata['select_var']) || !is_array($fielddata['select_var']) || empty($fielddata['select_var'])) && (isset($fielddata['option_options_method']))) {
+			if ((empty($fielddata['select_var']) || !is_array($fielddata['select_var'])) && (isset($fielddata['option_options_method']))
+			) {
 				$returnvalue['select_var'] = call_user_func($fielddata['option_options_method']);
 			}
 		}
@@ -215,8 +237,8 @@ class Form
 					if (\Froxlor\Validate\Form::validateFieldDefinition($groupdetails)) {
 						// Prefetch form fields
 						foreach ($groupdetails['fields'] as $fieldname => $fielddetails) {
-							if (!$only_enabledisable || ($only_enabledisable && isset($fielddetails['overview_option']))) {
-								$groupdetails['fields'][$fieldname] = self::arrayMergePrefix($fielddetails, $fielddetails['type'], self::prefetchFormFieldData($fieldname, $fielddetails));
+							if (!$only_enabledisable || isset($fielddetails['overview_option'])) {
+								$groupdetails['fields'][$fieldname] = array_merge($fielddetails, self::prefetchFormFieldData($fieldname, $fielddetails));
 								$form['groups'][$groupname]['fields'][$fieldname] = $groupdetails['fields'][$fieldname];
 							}
 						}
@@ -232,7 +254,7 @@ class Form
 							if (((isset($fielddetails['visible']) && $fielddetails['visible']) || !isset($fielddetails['visible'])) && (!$only_enabledisable || ($only_enabledisable && isset($fielddetails['overview_option'])))) {
 								$newfieldvalue = self::getFormFieldData($fieldname, $fielddetails, $input);
 								if ($newfieldvalue != $fielddetails['value']) {
-									if (($error = \Froxlor\Validate\Form::validateFormField($fieldname, $fielddetails, $newfieldvalue)) != true) {
+									if (($error = \Froxlor\Validate\Form::validateFormField($fieldname, $fielddetails, $newfieldvalue)) !== true) {
 										Response::standardError($error, $fieldname);
 									} else {
 										$changed_fields[$fieldname] = $newfieldvalue;
@@ -251,6 +273,10 @@ class Form
 					if (\Froxlor\Validate\Form::validateFieldDefinition($groupdetails)) {
 						// Check fields for plausibility
 						foreach ($groupdetails['fields'] as $fieldname => $fielddetails) {
+							if (!isset($submitted_fields[$fieldname])) {
+								// skip unset fields due to unavailability for this system/settings-set
+								continue;
+							}
 							if (!$only_enabledisable || ($only_enabledisable && isset($fielddetails['overview_option']))) {
 								if (($plausibility_check = self::checkPlausibilityFormField($fieldname, $fielddetails, $submitted_fields[$fieldname], $submitted_fields)) !== false) {
 									if (is_array($plausibility_check) && isset($plausibility_check[0])) {
@@ -283,6 +309,38 @@ class Form
 										}
 									}
 								}
+								if (!Settings::Config('disable_otp_security_check') && isset($fielddetails['required_otp']) && isset($changed_fields[$fieldname])) {
+									$otp_enabled_system = (bool)Settings::Get('2fa.enabled');
+									$otp_enabled_user = (int)CurrentUser::getField('type_2fa') != 0;
+									$do_update = !$fielddetails['required_otp'] || ($otp_enabled_system && $otp_enabled_user);
+									if ($do_update) {
+										// setting that requires OTP verification
+										if (empty($input['otp_verification'])) {
+											// in case email 2fa is enabled, send it now
+											CurrentUser::sendOtpEmail();
+											// build up form
+											if (is_array($url_params) && isset($url_params['filename'])) {
+												$filename = $url_params['filename'];
+												unset($url_params['filename']);
+											} else {
+												$filename = '';
+											}
+											HTML::askOTP('please_enter_otp', $filename, array_merge($url_params, $submitted_fields));
+										} else {
+											// validate given OTP code
+											$code = trim($input['otp_verification']);
+											$tfa = new FroxlorTwoFactorAuth('Froxlor ' . Settings::Get('system.hostname'));
+											$result = $tfa->verifyCode(CurrentUser::getField('data_2fa'), $code, 3);
+											if (!$result) {
+												Response::standardError('otpnotvalidated');
+											}
+										}
+									} else {
+										// do not update this setting
+										unset($changed_fields[$fieldname]);
+									}
+								}
+
 							}
 						}
 					}
@@ -294,7 +352,7 @@ class Form
 					if (\Froxlor\Validate\Form::validateFieldDefinition($groupdetails)) {
 						// Save fields
 						foreach ($groupdetails['fields'] as $fieldname => $fielddetails) {
-							if (!$only_enabledisable || ($only_enabledisable && isset($fielddetails['overview_option']))) {
+							if (!$only_enabledisable || (isset($fielddetails['overview_option']))) {
 								if (isset($changed_fields[$fieldname])) {
 									if (($saved_field = self::saveFormField($fieldname, $fielddetails, self::manipulateFormFieldData($fieldname, $fielddetails, $changed_fields[$fieldname]))) !== false) {
 										$saved_fields = array_merge($saved_fields, $saved_field);
@@ -311,24 +369,7 @@ class Form
 			// Save form
 			return self::saveForm($form, $saved_fields);
 		}
-	}
-
-	private static function arrayMergePrefix($array1, $key_prefix, $array2)
-	{
-		if (is_array($array1) && is_array($array2)) {
-			if ($key_prefix != '') {
-				foreach ($array2 as $key => $value) {
-					$array1[$key_prefix . '_' . $key] = $value;
-					unset($array2[$key]);
-				}
-				unset($array2);
-				return $array1;
-			} else {
-				return array_merge($array1, $array2);
-			}
-		} else {
-			return $array1;
-		}
+		return false;
 	}
 
 	public static function getFormFieldData($fieldname, $fielddata, &$input)

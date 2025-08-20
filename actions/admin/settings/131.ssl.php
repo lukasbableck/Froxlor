@@ -157,7 +157,8 @@ return [
 					'string_type' => 'file',
 					'default' => '/root/.acme.sh/acme.sh',
 					'save_method' => 'storeSettingField',
-					'advanced_mode' => true
+					'advanced_mode' => true,
+					'required_otp' => true
 				],
 				'system_letsencryptacmeconf' => [
 					'label' => lng('serversettings.letsencryptacmeconf'),
@@ -247,11 +248,41 @@ return [
 					'settinggroup' => 'system',
 					'varname' => 'le_domain_dnscheck_resolver',
 					'type' => 'text',
-					'string_regexp' => '/^(([0-9]+ [a-z0-9\-\._]+, ?)*[0-9]+ [a-z0-9\-\._]+)?$/i',
+					'string_type' => 'validate_ip',
 					'string_emptyallowed' => true,
 					'default' => '',
-					'save_method' => 'storeSettingField'
-				]
+					'save_method' => 'storeSettingField',
+					'advanced_mode' => true
+				],
+				'system_le_renew_services' => [
+					'label' => lng('serversettings.le_renew_services'),
+					'settinggroup' => 'system',
+					'varname' => 'le_renew_services',
+					'type' => 'select',
+					'default' => '',
+					'select_mode' => 'multiple',
+					'option_emptyallowed' => true,
+					'select_var' => [
+						'' => lng('panel.none_value'),
+						'postfix' => 'postfix (smtp)',
+						'dovecot' => 'dovecot <2.4 (imap/pop3)',
+						'dovecot24' => 'dovecot >=2.4 (imap/pop3)',
+						'proftpd' => 'proftpd (ftp)',
+					],
+					'save_method' => 'storeSettingFieldInsertUpdateServicesTask',
+					'advanced_mode' => true
+				],
+				'system_le_renew_hook' => [
+					'label' => lng('serversettings.le_renew_hook'),
+					'settinggroup' => 'system',
+					'varname' => 'le_renew_hook',
+					'type' => 'text',
+					'string_regexp' => '/^[a-z0-9\/\._\- ]+$/i',
+					'default' => 'systemctl restart postfix dovecot proftpd',
+					'save_method' => 'storeSettingFieldInsertUpdateServicesTask',
+					'advanced_mode' => true,
+					'required_otp' => true
+				],
 			]
 		]
 	]

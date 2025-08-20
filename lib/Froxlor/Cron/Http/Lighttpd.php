@@ -273,7 +273,7 @@ class Lighttpd extends HttpConfigBase
 						if (!empty(Settings::Get('system.dhparams_file'))) {
 							$dhparams = FileDir::makeCorrectFile(Settings::Get('system.dhparams_file'));
 							if (!file_exists($dhparams)) {
-								FileDir::safe_exec('openssl dhparam -out ' . escapeshellarg($dhparams) . ' 4096');
+								file_put_contents($dhparams, self::FFDHE4096);
 							}
 							$this->lighttpd_data[$vhost_filename] .= 'ssl.dh-file = "' . $dhparams . '"' . "\n";
 							$this->lighttpd_data[$vhost_filename] .= 'ssl.ec-curve = "secp384r1"' . "\n";
@@ -336,24 +336,9 @@ class Lighttpd extends HttpConfigBase
 				$_pos = strrpos($_tmp_path, '/');
 				$_inc_path = substr($_tmp_path, $_pos + 1);
 
-				// maindomain
-				if ((int)$domain['parentdomainid'] == 0 && Domain::isCustomerStdSubdomain((int)$domain['id']) == false && ((int)$domain['ismainbutsubto'] == 0 || Domain::domainMainToSubExists($domain['ismainbutsubto']) == false)) {
-					$vhost_no = '50';
-				} elseif ((int)$domain['parentdomainid'] == 0 && Domain::isCustomerStdSubdomain((int)$domain['id']) == false && (int)$domain['ismainbutsubto'] > 0) {
-					// sub-but-main-domain
-					$vhost_no = '51';
-				} else {
-					// subdomains
-					// number of dots in a domain specifies it's position (and depth of subdomain) starting at 89 going downwards on higher depth
-					$vhost_no = (string)(90 - substr_count($domain['domain'], ".") + 1);
-				}
-
-				if ($ssl == '1') {
-					$vhost_no = (int)$vhost_no += 10;
-				}
-
-				$vhost_filename = FileDir::makeCorrectFile(Settings::Get('system.apacheconf_vhost') . '/vhosts/' . $vhost_no . '_' . $domain['domain'] . '.conf');
-				$included_vhosts[] = $_inc_path . '/vhosts/' . $vhost_no . '_' . $domain['domain'] . '.conf';
+				$filename = self::getVhostFilename($domain, ($ssl == '1'), true);
+				$vhost_filename = FileDir::makeCorrectFile(Settings::Get('system.apacheconf_vhost') . '/vhosts/' . $filename);
+				$included_vhosts[] = $_inc_path . '/vhosts/' . $filename;
 			}
 
 			if (!isset($this->lighttpd_data[$vhost_filename])) {
@@ -421,6 +406,7 @@ class Lighttpd extends HttpConfigBase
 				// Get domain's redirect code
 				$code = Domain::getDomainRedirectCode($domain['id']);
 
+				$vhost_content .= $this->getLogFiles($domain);
 				$vhost_content .= '  url.redirect-code = ' . $code . "\n";
 				$vhost_content .= '  url.redirect = (' . "\n";
 				$vhost_content .= '     "^/(.*)$" => "' . $uri . '$1"' . "\n";
@@ -770,7 +756,7 @@ class Lighttpd extends HttpConfigBase
 				if (!empty(Settings::Get('system.dhparams_file'))) {
 					$dhparams = FileDir::makeCorrectFile(Settings::Get('system.dhparams_file'));
 					if (!file_exists($dhparams)) {
-						FileDir::safe_exec('openssl dhparam -out ' . escapeshellarg($dhparams) . ' 4096');
+						file_put_contents($dhparams, self::FFDHE4096);
 					}
 					$ssl_settings .= 'ssl.dh-file = "' . $dhparams . '"' . "\n";
 					$ssl_settings .= 'ssl.ec-curve = "secp384r1"' . "\n";

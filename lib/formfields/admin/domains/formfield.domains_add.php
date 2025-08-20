@@ -60,12 +60,6 @@ return [
 						'type' => 'select',
 						'select_var' => $domains
 					],
-					'issubof' => [
-						'label' => lng('domains.issubof'),
-						'desc' => lng('domains.issubofinfo'),
-						'type' => 'select',
-						'select_var' => $subtodomains
-					],
 					'caneditdomain' => [
 						'label' => lng('admin.domain_editable.title'),
 						'desc' => lng('admin.domain_editable.desc'),
@@ -117,7 +111,7 @@ return [
 						'selected' => 0
 					],
 					'dkim' => [
-						'visible' => Settings::Get('dkim.use_dkim') == '1',
+						'visible' => Settings::Get('antispam.activated') == '1',
 						'label' => 'DomainKeys',
 						'type' => 'checkbox',
 						'value' => '1',
@@ -199,7 +193,7 @@ return [
 						'label' => lng('admin.domain_sslenabled'),
 						'type' => 'checkbox',
 						'value' => '1',
-						'checked' => !empty($ssl_ipsandports)
+						'checked' => !empty(Settings::Get('system.defaultsslip'))
 					],
 					'no_ssl_available_info' => [
 						'visible' => empty($ssl_ipsandports),

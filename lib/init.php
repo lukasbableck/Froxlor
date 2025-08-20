@@ -50,10 +50,12 @@ if (!file_exists(dirname(__DIR__) . '/vendor/autoload.php')) {
 require dirname(__DIR__) . '/vendor/autoload.php';
 
 use Froxlor\CurrentUser;
+use Froxlor\FileDir;
 use Froxlor\Froxlor;
 use Froxlor\FroxlorLogger;
 use Froxlor\Http\RateLimiter;
 use Froxlor\Idna\IdnaWrapper;
+use Froxlor\Install\Update;
 use Froxlor\Language;
 use Froxlor\PhpHelper;
 use Froxlor\Settings;
@@ -63,7 +65,7 @@ use Froxlor\UI\Linker;
 use Froxlor\UI\Panel\UI;
 use Froxlor\UI\Request;
 use Froxlor\UI\Response;
-use Froxlor\Install\Update;
+use Froxlor\Install\Requirements;
 
 // include MySQL-tabledefinitions
 require Froxlor::getInstallDir() . '/lib/tables.inc.php';
@@ -107,6 +109,40 @@ require Froxlor::getInstallDir() . '/lib/userdata.inc.php';
 if (!isset($sql) || !is_array($sql)) {
 	UI::twig()->addGlobal('install_mode', '1');
 	echo UI::twig()->render($_deftheme . '/misc/configurehint.html.twig');
+	die();
+}
+
+/**
+ * Show nice note if requested domain is "unknown" to froxlor and thus is being lead to its vhost
+ */
+$req_host = UI::getCookieHost();
+if ($req_host != Settings::Get('system.hostname') &&
+	    Settings::Get('panel.is_configured') == 1 &&
+		!filter_var($req_host, FILTER_VALIDATE_IP) && (
+		empty(Settings::Get('system.froxloraliases')) ||
+		(!empty(Settings::Get('system.froxloraliases')) && !in_array($req_host, array_map('trim', explode(',', Settings::Get('system.froxloraliases')))))
+)) {
+	// not the froxlor system-hostname, show info page for domains not configured in froxlor
+	$redirect_file = FileDir::getUnknownDomainTemplate($req_host ?? "non-detectable http-host");
+	header('Location: '.$redirect_file);
+	die();
+}
+
+// validate php-extensions requirements
+$loadedExtensions = get_loaded_extensions();
+$missingExtensions = [];
+foreach (Requirements::REQUIRED_EXTENSIONS as $requiredExtension) {
+	if (in_array($requiredExtension, $loadedExtensions)) {
+		continue;
+	}
+	$missingExtensions[] = $requiredExtension;
+}
+if (!empty($missingExtensions)) {
+	UI::twig()->addGlobal('install_mode', '1');
+	echo UI::twig()->render($_deftheme . '/misc/missingextensionhint.html.twig', [
+		'phpversion' => phpversion(),
+		'missing_extensions' => implode(", ", $missingExtensions),
+	]);
 	die();
 }
 
@@ -168,7 +204,7 @@ if (Update::versionInUpdate(Settings::Get('panel.version'), '2.0.0-beta1')) {
 
 // Check if a different variant of the theme is used
 $themevariant = "default";
-if (preg_match("/([a-z0-9\.\-]+)_([a-z0-9\.\-]+)/i", $theme, $matches)) {
+if (preg_match("/([a-z0-9.\-]+)_([a-z0-9.\-]+)/i", $theme, $matches)) {
 	$theme = $matches[1];
 	$themevariant = $matches[2];
 }
@@ -182,10 +218,14 @@ if (@file_exists('templates/' . $theme . '/config.json')) {
 
 // check for existence of variant in theme
 if (is_array($_themeoptions) && (!array_key_exists('variants', $_themeoptions) || !array_key_exists(
-    $themevariant,
-    $_themeoptions['variants']
-))) {
+			$themevariant,
+			$_themeoptions['variants']
+		))) {
 	$themevariant = "default";
+}
+
+if (array_key_exists('global', $_themeoptions)) {
+	$_themeoptions['variants'][$themevariant] = PhpHelper::array_merge_recursive_distinct($_themeoptions['global'], $_themeoptions['variants'][$themevariant]);
 }
 
 // check for custom header-graphic
@@ -209,8 +249,11 @@ if (Settings::Get('panel.logo_overridecustom') == 0 && file_exists($hl_path . '/
 	}
 }
 
+$color_scheme = $_themeoptions['variants'][$themevariant]['color-scheme'] ?? 'auto';
+
 UI::twig()->addGlobal('header_logo_login', $header_logo_login);
 UI::twig()->addGlobal('header_logo', $header_logo);
+UI::twig()->addGlobal('color_scheme', $color_scheme);
 
 /**
  * Redirects to index.php (login page) if no session exists
@@ -235,7 +278,7 @@ if (CurrentUser::hasSession()) {
 	$log = FroxlorLogger::getInstanceOf($userinfo);
 	if ((CurrentUser::isAdmin() && AREA != 'admin') || (!CurrentUser::isAdmin() && AREA != 'customer')) {
 		// user tries to access an area not meant for him -> redirect to corresponding index
-		Response::redirectTo((CurrentUser::isAdmin() ? 'admin' : 'customer') . '_index.php', $params);
+		Response::redirectTo((CurrentUser::isAdmin() ? 'admin' : 'customer') . '_index.php');
 		exit();
 	}
 }
@@ -274,29 +317,21 @@ if (AREA == 'admin' || AREA == 'customer') {
 }
 UI::twig()->addGlobal('nav_entries', $navigation);
 
-$js = "";
-$css = "";
-if (is_array($_themeoptions) && array_key_exists('js', $_themeoptions['variants'][$themevariant])) {
-	if (is_array($_themeoptions['variants'][$themevariant]['js'])) {
-		foreach ($_themeoptions['variants'][$themevariant]['js'] as $jsfile) {
-			if (file_exists('templates/' . $theme . '/assets/js/' . $jsfile)) {
-				$js .= '<script type="text/javascript" src="' . mix('templates/' . $theme . '/assets/js/' . $jsfile) . '"></script>' . "\n";
-			}
-		}
-	}
-	if (is_array($_themeoptions['variants'][$themevariant]['css'])) {
-		foreach ($_themeoptions['variants'][$themevariant]['css'] as $cssfile) {
-			if (file_exists('templates/' . $theme . '/assets/css/' . $cssfile)) {
-				$css .= '<link href="' . mix('templates/' . $theme . '/assets/css/' . $cssfile) . '" rel="stylesheet" type="text/css" />' . "\n";
+$theme_assets = [];
+foreach (['css', 'js'] as $asset) {
+	if (is_array($_themeoptions) && array_key_exists($asset, $_themeoptions['variants'][$themevariant])) {
+		if (is_array($_themeoptions['variants'][$themevariant][$asset])) {
+			foreach ($_themeoptions['variants'][$themevariant][$asset] as $assetfile) {
+				if (file_exists('templates/' . $theme . '/' . $assetfile)) {
+					$theme_assets[] .= 'templates/' . $theme . '/' . $assetfile;
+				}
 			}
 		}
 	}
 }
 
-UI::twig()->addGlobal('theme_js', $js);
-UI::twig()->addGlobal('theme_css', $css);
-unset($js);
-unset($css);
+UI::twig()->addGlobal('theme_assets', $theme_assets);
+unset($theme_assets);
 
 $action = Request::any('action');
 $page = Request::any('page', 'overview');
@@ -326,19 +361,22 @@ if (CurrentUser::hasSession()) {
 	UI::twig()->addGlobal('csrf_token', $csrf_token);
 	// check if csrf token is valid
 	if (in_array($_SERVER['REQUEST_METHOD'], ['POST', 'PUT', 'PATCH', 'DELETE'])) {
-		$current_token = $_POST['csrf_token'] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? null;
+		$current_token = Request::post('csrf_token', $_SERVER['HTTP_X_CSRF_TOKEN'] ?? null);
 		if ($current_token != CurrentUser::getField('csrf_token')) {
+			http_response_code(403);
 			Response::dynamicError('CSRF validation failed');
 		}
 	}
 	// update cookie lifetime
 	$cookie_params = [
-		'expires' => time() + Settings::Get('session.sessiontimeout'),
+		'expires' => time() + min(Settings::Get('session.sessiontimeout'), 31536000),
 		'path' => '/',
 		'domain' => UI::getCookieHost(),
 		'secure' => UI::requestIsHttps(),
 		'httponly' => true,
-		'samesite' => 'Strict'
+		'samesite' => 'Lax'
 	];
 	setcookie(session_name(), $_COOKIE[session_name()], $cookie_params);
+} else {
+	UI::twig()->addGlobal('csrf_token', Froxlor::genSessionId(20));
 }

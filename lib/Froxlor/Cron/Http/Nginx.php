@@ -46,10 +46,9 @@ class Nginx extends HttpConfigBase
 
 	// protected
 	protected $needed_htpasswds = [];
-	protected $auth_backend_loaded = false;
+	protected $http2_on_directive = false;
 	protected $htpasswds_data = [];
 	protected $known_htpasswdsfilenames = [];
-	protected $mod_accesslog_loaded = '0';
 	protected $vhost_root_autoindex = false;
 
 	/**
@@ -59,6 +58,18 @@ class Nginx extends HttpConfigBase
 	 * @var bool
 	 */
 	private $deactivated = false;
+
+	public function __construct()
+	{
+		$nores = false;
+		$res = FileDir::safe_exec('nginx -v 2>&1', $nores, ['>', '&']);
+		$ver_str = array_shift($res);
+		$cNginxVer = substr($ver_str, strrpos($ver_str, "/") + 1);
+		if (version_compare($cNginxVer, '1.25.1', '>=')) {
+			// at least 1.25.1
+			$this->http2_on_directive = true;
+		}
+	}
 
 	public function createVirtualHosts()
 	{
@@ -162,8 +173,10 @@ class Nginx extends HttpConfigBase
 				/**
 				 * this HAS to be set for the default host in nginx or else no vhost will work
 				 */
-				$this->nginx_data[$vhost_filename] .= "\t" . 'listen    ' . $ip . ':' . $port . ' default_server' . ($ssl_vhost == true ? ' ssl' : '') . ($http2 == true ? ' http2' : '') . ';' . "\n";
-
+				$this->nginx_data[$vhost_filename] .= "\t" . 'listen    ' . $ip . ':' . $port . ' default_server' . ($ssl_vhost == true ? ' ssl' : '') . ($http2 && !$this->http2_on_directive ? ' http2' : '') . ';' . "\n";
+				if ($http2 && $this->http2_on_directive) {
+					$this->nginx_data[$vhost_filename] .= "\t" . 'http2 on;' . "\n";
+				}
 				$this->nginx_data[$vhost_filename] .= "\t" . '# Froxlor default vhost' . "\n";
 
 				$aliases = "";
@@ -386,7 +399,7 @@ class Nginx extends HttpConfigBase
 				if (!empty(Settings::Get('system.dhparams_file'))) {
 					$dhparams = FileDir::makeCorrectFile(Settings::Get('system.dhparams_file'));
 					if (!file_exists($dhparams)) {
-						FileDir::safe_exec('openssl dhparam -out ' . escapeshellarg($dhparams) . ' 4096');
+						file_put_contents($dhparams, self::FFDHE4096);
 					}
 					$sslsettings .= "\t" . 'ssl_dhparam ' . $dhparams . ';' . "\n";
 				}
@@ -422,7 +435,7 @@ class Nginx extends HttpConfigBase
 					$sslsettings .= '";' . "\n";
 				}
 
-				if ((isset($domain_or_ip['ocsp_stapling']) && $domain_or_ip['ocsp_stapling'] == "1") || (isset($domain_or_ip['letsencrypt']) && $domain_or_ip['letsencrypt'] == "1")) {
+				if ((isset($domain_or_ip['ocsp_stapling']) && $domain_or_ip['ocsp_stapling'] == "1")) {
 					$sslsettings .= "\t" . 'ssl_stapling on;' . "\n";
 					$sslsettings .= "\t" . 'ssl_stapling_verify on;' . "\n";
 					$sslsettings .= "\t" . 'ssl_trusted_certificate ' . FileDir::makeCorrectFile($domain_or_ip['ssl_cert_file']) . ';' . "\n";
@@ -467,26 +480,6 @@ class Nginx extends HttpConfigBase
 		}
 	}
 
-	protected function getVhostFilename($domain, $ssl_vhost = false)
-	{
-		if ((int)$domain['parentdomainid'] == 0 && Domain::isCustomerStdSubdomain((int)$domain['id']) == false && ((int)$domain['ismainbutsubto'] == 0 || Domain::domainMainToSubExists($domain['ismainbutsubto']) == false)) {
-			$vhost_no = '35';
-		} elseif ((int)$domain['parentdomainid'] == 0 && Domain::isCustomerStdSubdomain((int)$domain['id']) == false && (int)$domain['ismainbutsubto'] > 0) {
-			$vhost_no = '30';
-		} else {
-			// number of dots in a domain specifies it's position (and depth of subdomain) starting at 29 going downwards on higher depth
-			$vhost_no = (string)(30 - substr_count($domain['domain'], ".") + 1);
-		}
-
-		if ($ssl_vhost === true) {
-			$vhost_filename = FileDir::makeCorrectFile(Settings::Get('system.apacheconf_vhost') . '/' . $vhost_no . '_froxlor_ssl_vhost_' . $domain['domain'] . '.conf');
-		} else {
-			$vhost_filename = FileDir::makeCorrectFile(Settings::Get('system.apacheconf_vhost') . '/' . $vhost_no . '_froxlor_normal_vhost_' . $domain['domain'] . '.conf');
-		}
-
-		return $vhost_filename;
-	}
-
 	protected function getVhostContent($domain, $ssl_vhost = false)
 	{
 		if ($ssl_vhost === true && $domain['ssl'] != '1' && $domain['ssl_redirect'] != '1') {
@@ -501,6 +494,7 @@ class Nginx extends HttpConfigBase
 
 		$vhost_content = '';
 		$_vhost_content = '';
+		$has_http2_on = false;
 
 		$query = "SELECT * FROM `" . TABLE_PANEL_IPSANDPORTS . "` `i`, `" . TABLE_DOMAINTOIP . "` `dip`
 			WHERE dip.id_domain = :domainid AND i.id = dip.id_ipandports ";
@@ -551,7 +545,11 @@ class Nginx extends HttpConfigBase
 			}
 			$http2 = $ssl_vhost == true && (isset($domain['http2']) && $domain['http2'] == '1' && Settings::Get('system.http2_support') == '1');
 
-			$vhost_content .= "\t" . 'listen ' . $ipport . ($ssl_vhost == true ? ' ssl' : '') . ($http2 == true ? ' http2' : '') . ';' . "\n";
+			$vhost_content .= "\t" . 'listen ' . $ipport . ($ssl_vhost == true ? ' ssl' : '') . ($http2 && !$this->http2_on_directive ? ' http2' : '') . ';' . "\n";
+			if ($http2 && $this->http2_on_directive && !$has_http2_on) {
+				$vhost_content .= "\t" . 'http2 on;' . "\n";
+				$has_http2_on = true;
+			}
 		}
 
 		// get all server-names
@@ -606,6 +604,7 @@ class Nginx extends HttpConfigBase
 				// Get domain's redirect code
 				$code = Domain::getDomainRedirectCode($domain['id']);
 
+				$vhost_content .= $this->getLogFiles($domain);
 				$vhost_content .= "\t" . 'location / {' . "\n";
 				$vhost_content .= "\t\t" . 'return ' . $code . ' ' . $uri . '$request_uri;' . "\n";
 				$vhost_content .= "\t" . '}' . "\n";
@@ -1181,14 +1180,7 @@ class Nginx extends HttpConfigBase
 	private function createStandardErrorHandler()
 	{
 		if (Settings::Get('defaultwebsrverrhandler.enabled') == '1' && (Settings::Get('defaultwebsrverrhandler.err401') != '' || Settings::Get('defaultwebsrverrhandler.err403') != '' || Settings::Get('defaultwebsrverrhandler.err404') != '' || Settings::Get('defaultwebsrverrhandler.err500') != '')) {
-			$vhosts_folder = '';
-			if (is_dir(Settings::Get('system.apacheconf_vhost'))) {
-				$vhosts_folder = FileDir::makeCorrectDir(Settings::Get('system.apacheconf_vhost'));
-			} else {
-				$vhosts_folder = FileDir::makeCorrectDir(dirname(Settings::Get('system.apacheconf_vhost')));
-			}
-
-			$vhosts_filename = FileDir::makeCorrectFile($vhosts_folder . '/05_froxlor_default_errorhandler.conf');
+			$vhosts_filename = $this->getCustomVhostFilename('05_froxlor_default_errorhandler.conf');
 
 			if (!isset($this->nginx_data[$vhosts_filename])) {
 				$this->nginx_data[$vhosts_filename] = '';

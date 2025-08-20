@@ -52,7 +52,7 @@ return [
 					'admin_password' => [
 						'label' => lng('login.password') . '&nbsp;(' . lng('panel.emptyfornochanges') . ')',
 						'type' => 'password',
-						'autocomplete' => 'off',
+						'autocomplete' => 'new-password',
 						'visible' => $result['adminid'] != $userinfo['userid'],
 						'next_to' => [
 							'admin_password_suggestion' => [
@@ -71,6 +71,14 @@ return [
 						'selected' => $result['def_language'],
 						'visible' => $result['adminid'] != $userinfo['userid']
 					],
+					'gui_access' => [
+						'label' => lng('usersettings.gui_access.title'),
+						'desc' => lng('usersettings.gui_access.description'),
+						'type' => 'checkbox',
+						'value' => '1',
+						'checked' => $result['gui_access'],
+						'visible' => $result['adminid'] != $userinfo['userid']
+					],
 					'api_allowed' => [
 						'label' => lng('usersettings.api_allowed.title'),
 						'desc' => lng('usersettings.api_allowed.description'),
@@ -78,7 +86,7 @@ return [
 						'value' => '1',
 						'checked' => $result['api_allowed'],
 						'visible' => Settings::Get('api.enabled') == '1'
-					]
+					],
 				]
 			],
 			'section_b' => [
@@ -132,6 +140,7 @@ return [
 					],
 					'customers' => [
 						'label' => lng('admin.customers'),
+						'desc' => lng('panel.use_checkbox_for_unlimited'),
 						'type' => 'textul',
 						'value' => empty($result['customers']) ? '0' : $result['customers'],
 						'maxlength' => 9,
@@ -145,6 +154,7 @@ return [
 					],
 					'domains' => [
 						'label' => lng('admin.domains'),
+						'desc' => lng('panel.use_checkbox_for_unlimited'),
 						'type' => 'textul',
 						'value' => empty($result['domains']) ? '0' : $result['domains'],
 						'maxlength' => 9,
@@ -158,6 +168,7 @@ return [
 					],
 					'diskspace' => [
 						'label' => lng('customer.diskspace') . ' (' . lng('customer.mib') . ')',
+						'desc' => lng('panel.use_checkbox_for_unlimited'),
 						'type' => 'textul',
 						'value' => empty($result['diskspace']) ? '0' : $result['diskspace'],
 						'maxlength' => 6,
@@ -165,6 +176,7 @@ return [
 					],
 					'traffic' => [
 						'label' => lng('customer.traffic') . ' (' . lng('customer.gib') . ')',
+						'desc' => lng('panel.use_checkbox_for_unlimited'),
 						'type' => 'textul',
 						'value' => empty($result['traffic']) ? '0' : $result['traffic'],
 						'maxlength' => 4,
@@ -172,6 +184,7 @@ return [
 					],
 					'subdomains' => [
 						'label' => lng('customer.subdomains'),
+						'desc' => lng('panel.use_checkbox_for_unlimited'),
 						'type' => 'textul',
 						'value' => empty($result['subdomains']) ? '0' : $result['subdomains'],
 						'maxlength' => 9,
@@ -179,6 +192,7 @@ return [
 					],
 					'emails' => [
 						'label' => lng('customer.emails'),
+						'desc' => lng('panel.use_checkbox_for_unlimited'),
 						'type' => 'textul',
 						'value' => empty($result['emails']) ? '0' : $result['emails'],
 						'maxlength' => 9,
@@ -186,6 +200,7 @@ return [
 					],
 					'email_accounts' => [
 						'label' => lng('customer.accounts'),
+						'desc' => lng('panel.use_checkbox_for_unlimited'),
 						'type' => 'textul',
 						'value' => empty($result['email_accounts']) ? '0' : $result['email_accounts'],
 						'maxlength' => 9,
@@ -193,6 +208,7 @@ return [
 					],
 					'email_forwarders' => [
 						'label' => lng('customer.forwarders'),
+						'desc' => lng('panel.use_checkbox_for_unlimited'),
 						'type' => 'textul',
 						'value' => empty($result['email_forwarders']) ? '0' : $result['email_forwarders'],
 						'maxlength' => 9,
@@ -200,6 +216,7 @@ return [
 					],
 					'email_quota' => [
 						'label' => lng('customer.email_quota') . ' (' . lng('customer.mib') . ')',
+						'desc' => lng('panel.use_checkbox_for_unlimited'),
 						'type' => 'textul',
 						'value' => empty($result['email_quota']) ? '0' : $result['email_quota'],
 						'maxlength' => 9,
@@ -208,12 +225,14 @@ return [
 					],
 					'ftps' => [
 						'label' => lng('customer.ftps'),
+						'desc' => lng('panel.use_checkbox_for_unlimited'),
 						'type' => 'textul',
 						'value' => empty($result['ftps']) ? '0' : $result['ftps'],
 						'maxlength' => 9
 					],
 					'mysqls' => [
 						'label' => lng('customer.mysqls'),
+						'desc' => lng('panel.use_checkbox_for_unlimited'),
 						'type' => 'textul',
 						'value' => empty($result['mysqls']) ? '0' : $result['mysqls'],
 						'maxlength' => 9,

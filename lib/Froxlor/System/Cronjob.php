@@ -134,13 +134,21 @@ class Cronjob
 			INSERT INTO `" . TABLE_PANEL_TASKS . "` SET `type` = :type, `data` = :data
 		");
 
-		if ($type == TaskId::REBUILD_VHOST || $type == TaskId::REBUILD_DNS || $type == TaskId::CREATE_FTP || $type == TaskId::CREATE_QUOTA || $type == TaskId::REBUILD_CRON) {
+		if ($type == TaskId::REBUILD_VHOST || $type == TaskId::REBUILD_DNS || $type == TaskId::CREATE_FTP || $type == TaskId::REBUILD_RSPAMD || $type == TaskId::CREATE_QUOTA || $type == TaskId::REBUILD_CRON || $type == TaskId::UPDATE_LE_SERVICES) {
 			// 4 = bind -> if bind disabled -> no task
 			if ($type == TaskId::REBUILD_DNS && Settings::Get('system.bind_enable') == '0') {
 				return;
 			}
+			// 9 = rspamd -> if antispam disabled -> no task
+			if ($type == TaskId::REBUILD_RSPAMD && Settings::Get('antispam.activated') == '0') {
+				return;
+			}
 			// 10 = quota -> if quota disabled -> no task
 			if ($type == TaskId::CREATE_QUOTA && Settings::Get('system.diskquota_enabled') == '0') {
+				return;
+			}
+			// 13 = let's encrypt for services -> if services empty = no task
+			if ($type == TaskId::UPDATE_LE_SERVICES && (Settings::Get('system.le_froxlor_enabled') == '0' || Settings::Get('system.le_renew_services') == '')) {
 				return;
 			}
 
@@ -179,7 +187,7 @@ class Cronjob
 		} elseif ($type == TaskId::DELETE_EMAIL_DATA && count($params) == 2 && $params[0] != '' && $params[1] != '') {
 			$data = [];
 			$data['loginname'] = $params[0];
-			$data['email'] = $params[1];
+			$data['emailpath'] = $params[1];
 			$data = json_encode($data);
 			Database::pexecute($ins_stmt, [
 				'type' => TaskId::DELETE_EMAIL_DATA,
@@ -211,10 +219,10 @@ class Cronjob
 				'type' => TaskId::DELETE_DOMAIN_SSL,
 				'data' => $data
 			]);
-		} elseif ($type == TaskId::CREATE_CUSTOMER_BACKUP && isset($params[0]) && is_array($params[0])) {
+		} elseif ($type == TaskId::CREATE_CUSTOMER_DATADUMP && isset($params[0]) && is_array($params[0])) {
 			$data = json_encode($params[0]);
 			Database::pexecute($ins_stmt, [
-				'type' => TaskId::CREATE_CUSTOMER_BACKUP,
+				'type' => TaskId::CREATE_CUSTOMER_DATADUMP,
 				'data' => $data
 			]);
 		}
@@ -310,42 +318,37 @@ class Cronjob
 	}
 
 	/**
-	 * Cronjob function to end a cronjob in a critical condition
-	 * but not without sending a notification mail to the admin
+	 * Send notification to system admin via email
 	 *
 	 * @param string $message
 	 * @param string $subject
 	 *
 	 * @return void
 	 */
-	public static function dieWithMail(string $message, string $subject = "[froxlor] Cronjob error")
+	public static function notifyMailToAdmin(string $message, string $subject = "[froxlor] Important notice")
 	{
-		if (Settings::Get('system.send_cron_errors') == '1') {
-			$_mail = new Mailer(true);
-			$_mailerror = false;
-			$mailerr_msg = "";
-			try {
-				$_mail->Subject = $subject;
-				$_mail->AltBody = $message;
-				$_mail->MsgHTML(nl2br($message));
-				$_mail->AddAddress(Settings::Get('panel.adminmail'), Settings::Get('panel.adminmail_defname'));
-				$_mail->Send();
-			} catch (\PHPMailer\PHPMailer\Exception $e) {
-				$mailerr_msg = $e->errorMessage();
-				$_mailerror = true;
-			} catch (Exception $e) {
-				$mailerr_msg = $e->getMessage();
-				$_mailerror = true;
-			}
-
-			$_mail->ClearAddresses();
-
-			if ($_mailerror) {
-				echo 'Error sending mail: ' . $mailerr_msg . "\n";
-			}
+		$mail = new Mailer(true);
+		$mailerror = false;
+		$mailerr_msg = "";
+		try {
+			$mail->Subject = $subject;
+			$mail->AltBody = $message;
+			$mail->MsgHTML(nl2br($message));
+			$mail->AddAddress(Settings::Get('panel.adminmail'), Settings::Get('panel.adminmail_defname'));
+			$mail->Send();
+		} catch (\PHPMailer\PHPMailer\Exception $e) {
+			$mailerr_msg = $e->errorMessage();
+			$mailerror = true;
+		} catch (Exception $e) {
+			$mailerr_msg = $e->getMessage();
+			$mailerror = true;
 		}
 
-		die($message);
+		$mail->ClearAddresses();
+
+		if ($mailerror) {
+			echo 'Error sending mail: ' . $mailerr_msg . "\n";
+		}
 	}
 
 	/**

@@ -32,7 +32,7 @@ class Response
 {
 
 	/**
-	 * Sends an header ( 'Location ...' ) to the browser.
+	 * Sends a header ( 'Location ...' ) to the browser.
 	 *
 	 * @param string $destination
 	 *            Destination
@@ -74,18 +74,18 @@ class Response
 				$linker->filename = $path . $destination;
 			}
 			header('Location: ' . $linker->getLink());
-			exit();
+			exit;
 		} elseif ($get_variables == null) {
 			$linker = new Linker($destination);
 			header('Location: ' . $linker->getLink());
-			exit();
+			exit;
 		}
 
 		return false;
 	}
 
 	/**
-	 * Prints one ore more errormessages on screen
+	 * Prints one or more errormessages on screen
 	 *
 	 * @param array $errors
 	 *            Errormessages
@@ -93,8 +93,9 @@ class Response
 	 *            A %s in the errormessage will be replaced by this string.
 	 * @param bool $throw_exception
 	 *
-	 * @author Florian Lippert <flo@syscp.org> (2003-2009)
+	 * @throws Exception
 	 * @author Ron Brand <ron.brand@web.de>
+	 * @author Florian Lippert <flo@syscp.org> (2003-2009)
 	 */
 	public static function standardError($errors = '', $replacer = '', $throw_exception = false)
 	{
@@ -115,7 +116,7 @@ class Response
 		$error = '';
 		foreach ($errors as $single_error) {
 			if (strpos($single_error, ".") === false) {
-				$single_error = 'error.'.$single_error;
+				$single_error = 'error.' . $single_error;
 			}
 			$single_error = lng($single_error, [htmlentities($replacer)]);
 			if (empty($error)) {
@@ -138,7 +139,7 @@ class Response
 		exit;
 	}
 
-	public static function dynamicError($message)
+	public static function dynamicError($message, bool $nosession = false)
 	{
 		$_SESSION['requestData'] = $_POST;
 		$link_ref = '';
@@ -146,7 +147,8 @@ class Response
 			$link_ref = htmlentities($_SERVER['HTTP_REFERER']);
 		}
 
-		UI::view('misc/alert.html.twig', [
+		$tpl = $nosession ? 'misc/alert_nosession.html.twig' : 'misc/alert.html.twig';
+		UI::view($tpl, [
 			'type' => 'danger',
 			'btntype' => 'light',
 			'heading' => lng('error.error'),
@@ -157,7 +159,7 @@ class Response
 	}
 
 	/**
-	 * Prints one ore more errormessages on screen
+	 * Prints one or more errormessages on screen
 	 *
 	 * @param array $success_message
 	 *            Errormessages
@@ -166,12 +168,13 @@ class Response
 	 * @param array $params
 	 * @param bool $throw_exception
 	 *
+	 * @throws Exception
 	 * @author Florian Lippert <flo@syscp.org> (2003-2009)
 	 */
 	public static function standardSuccess($success_message = '', $replacer = '', $params = [], $throw_exception = false)
 	{
 		if (strpos($success_message, ".") === false) {
-			$success_message = 'success.'.$success_message;
+			$success_message = 'success.' . $success_message;
 		}
 		$success_message = lng($success_message, [htmlentities($replacer)]);
 

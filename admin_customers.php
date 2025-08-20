@@ -98,7 +98,7 @@ if (($page == 'customers' || $page == 'overview') && $userinfo['customers'] != '
 
 			$log->logAction(FroxlorLogger::ADM_ACTION, LOG_INFO, "switched user and is now '" . $destination_user . "'");
 
-			$target = (isset($_GET['target']) ? $_GET['target'] : 'index');
+			$target = Request::get('target', 'index');
 			$redirect = "customer_" . $target . ".php";
 			if (!file_exists(Froxlor::getInstallDir() . "/" . $redirect)) {
 				$redirect = "customer_index.php";
@@ -119,7 +119,7 @@ if (($page == 'customers' || $page == 'overview') && $userinfo['customers'] != '
 		}
 		$result = json_decode($json_result, true)['data'];
 
-		if (isset($_POST['send']) && $_POST['send'] == 'send') {
+		if (Request::post('send') == 'send') {
 			try {
 				$json_result = Customers::getLocal($userinfo, [
 					'id' => $id
@@ -147,11 +147,11 @@ if (($page == 'customers' || $page == 'overview') && $userinfo['customers'] != '
 		}
 		$result = json_decode($json_result, true)['data'];
 
-		if (isset($_POST['send']) && $_POST['send'] == 'send') {
+		if (Request::post('send') == 'send') {
 			try {
 				$json_result = Customers::getLocal($userinfo, [
 					'id' => $id,
-					'delete_userfiles' => (isset($_POST['delete_userfiles']) ? (int)$_POST['delete_userfiles'] : 0)
+					'delete_userfiles' => Request::post('delete_userfiles', 0)
 				])->delete();
 			} catch (Exception $e) {
 				Response::dynamicError($e->getMessage());
@@ -167,9 +167,9 @@ if (($page == 'customers' || $page == 'overview') && $userinfo['customers'] != '
 			], $result['loginname']);
 		}
 	} elseif ($action == 'add') {
-		if (isset($_POST['send']) && $_POST['send'] == 'send') {
+		if (Request::post('send') == 'send') {
 			try {
-				Customers::getLocal($userinfo, $_POST)->add();
+				Customers::getLocal($userinfo, Request::postAll())->add();
 			} catch (Exception $e) {
 				Response::dynamicError($e->getMessage());
 			}
@@ -243,9 +243,9 @@ if (($page == 'customers' || $page == 'overview') && $userinfo['customers'] != '
 		$result = json_decode($json_result, true)['data'];
 
 		if ($result['loginname'] != '') {
-			if (isset($_POST['send']) && $_POST['send'] == 'send') {
+			if (Request::post('send') == 'send') {
 				try {
-					Customers::getLocal($userinfo, $_POST)->update();
+					Customers::getLocal($userinfo, Request::postAll())->update();
 				} catch (Exception $e) {
 					Response::dynamicError($e->getMessage());
 				}
@@ -307,17 +307,20 @@ if (($page == 'customers' || $page == 'overview') && $userinfo['customers'] != '
 					$hosting_plans[$row['id']] = $row['name'];
 				}
 
-				$available_admins_stmt = Database::prepare("
-					SELECT * FROM `" . TABLE_PANEL_ADMINS . "`
-					WHERE (`customers` = '-1' OR `customers` > `customers_used`)
-					AND adminid <> :currentadmin
-				");
-				Database::pexecute($available_admins_stmt, ['currentadmin' => $result['adminid']]);
-				$admin_select = [
-					0 => "---"
-				];
-				while ($available_admin = $available_admins_stmt->fetch()) {
-					$admin_select[$available_admin['adminid']] = $available_admin['name'] . " (" . $available_admin['loginname'] . ")";
+				$admin_select = [];
+				if ($userinfo['customers_see_all'] == '1') {
+					$available_admins_stmt = Database::prepare("
+						SELECT * FROM `" . TABLE_PANEL_ADMINS . "`
+						WHERE (`customers` = '-1' OR `customers` > `customers_used`)
+						AND adminid <> :currentadmin
+					");
+					Database::pexecute($available_admins_stmt, ['currentadmin' => $result['adminid']]);
+					$admin_select = [
+						0 => "---"
+					];
+					while ($available_admin = $available_admins_stmt->fetch()) {
+						$admin_select[$available_admin['adminid']] = $available_admin['name'] . " (" . $available_admin['loginname'] . ")";
+					}
 				}
 
 				$customer_edit_data = include_once dirname(__FILE__) . '/lib/formfields/admin/customer/formfield.customer_edit.php';

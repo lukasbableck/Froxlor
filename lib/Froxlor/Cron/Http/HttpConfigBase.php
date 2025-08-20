@@ -28,6 +28,7 @@ namespace Froxlor\Cron\Http;
 use Froxlor\Cron\Http\LetsEncrypt\AcmeSh;
 use Froxlor\Cron\Http\Php\Fpm;
 use Froxlor\Database\Database;
+use Froxlor\Domain\Domain;
 use Froxlor\FileDir;
 use Froxlor\Froxlor;
 use Froxlor\FroxlorLogger;
@@ -43,6 +44,26 @@ use PDO;
  */
 class HttpConfigBase
 {
+
+	/**
+	 * Pre-defined DHE groups to use as fallback if dhparams_file
+	 * is given, but non-existent, see also https://github.com/froxlor/Froxlor/issues/1270
+	 */
+	const FFDHE4096 = <<<EOC
+-----BEGIN DH PARAMETERS-----
+MIICCAKCAgEA//////////+t+FRYortKmq/cViAnPTzx2LnFg84tNpWp4TZBFGQz
++8yTnc4kmz75fS/jY2MMddj2gbICrsRhetPfHtXV/WVhJDP1H18GbtCFY2VVPe0a
+87VXE15/V8k1mE8McODmi3fipona8+/och3xWKE2rec1MKzKT0g6eXq8CrGCsyT7
+YdEIqUuyyOP7uWrat2DX9GgdT0Kj3jlN9K5W7edjcrsZCwenyO4KbXCeAvzhzffi
+7MA0BM0oNC9hkXL+nOmFg/+OTxIy7vKBg8P+OxtMb61zO7X8vC7CIAXFjvGDfRaD
+ssbzSibBsu/6iGtCOGEfz9zeNVs7ZRkDW7w09N75nAI4YbRvydbmyQd62R0mkff3
+7lmMsPrBhtkcrv4TCYUTknC0EwyTvEN5RPT9RFLi103TZPLiHnH1S/9croKrnJ32
+nuhtK8UiNjoNq8Uhl5sN6todv5pC1cRITgq80Gv6U93vPBsg7j/VnXwl5B0rZp4e
+8W5vUsMWTfT7eTDp5OWIV7asfV9C1p9tGHdjzx1VA0AEh/VbpX4xzHpxNciG77Qx
+iu1qHgEtnmgyqQdgCpGBMMRtx3j5ca0AOAkpmaMzy4t6Gh25PXFAADwqTs6p+Y0K
+zAqCkc3OyX3Pjsm1Wn+IpGtNtahR9EGC4caKAH5eZV9q//////////8CAQI=
+-----END DH PARAMETERS-----
+EOC;
 
 	public function init()
 	{
@@ -186,5 +207,28 @@ class HttpConfigBase
 			return true;
 		}
 		return false;
+	}
+
+	/**
+	 * Get the filename for the virtualhost
+	 */
+	protected function getVhostFilename(array $domain, bool $ssl_vhost = false, bool $filename_only = false)
+	{
+		// number of dots in a domain specifies its position (and depth of subdomain) starting at 35 going downwards on higher depth
+		$vhost_no = (string)(35 - substr_count($domain['domain'], ".") + 1);
+		$filename = $vhost_no . '_froxlor_' . ($ssl_vhost ? 'ssl' : 'normal') . '_vhost_' . $domain['domain'] . '.conf';
+		if ($filename_only) {
+			return $filename;
+		}
+		return FileDir::makeCorrectFile(Settings::Get('system.apacheconf_vhost') . '/' . $filename);
+	}
+
+	protected function getCustomVhostFilename(string $name)
+	{
+		$vhosts_folder = FileDir::makeCorrectDir(dirname(Settings::Get('system.apacheconf_vhost')));
+		if (is_dir(Settings::Get('system.apacheconf_vhost'))) {
+			$vhosts_folder = FileDir::makeCorrectDir(Settings::Get('system.apacheconf_vhost'));
+		}
+		return FileDir::makeCorrectFile($vhosts_folder . '/' . $name);
 	}
 }

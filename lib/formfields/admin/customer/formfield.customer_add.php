@@ -58,8 +58,8 @@ return [
 					'new_customer_password' => [
 						'label' => lng('login.password'),
 						'type' => 'password',
-						'autocomplete' => 'off',
-						'placeholder' => lng('admin.username_default_msg'),
+						'autocomplete' => 'new-password',
+						'placeholder' => lng('admin.password_default_msg'),
 						'next_to' => [
 							'new_customer_password_suggestion' => [
 								'next_to_prefix' => lng('customer.generated_pwd') . ':',
@@ -82,6 +82,13 @@ return [
 						'select_var' => Language::getLanguages(),
 						'selected' => Settings::Get('panel.standardlanguage')
 					],
+					'gui_access' => [
+						'label' => lng('usersettings.gui_access.title'),
+						'desc' => lng('usersettings.gui_access.description'),
+						'type' => 'checkbox',
+						'value' => '1',
+						'checked' => 1
+					],
 					'api_allowed' => [
 						'label' => lng('usersettings.api_allowed.title'),
 						'desc' => lng('usersettings.api_allowed.description'),
@@ -89,7 +96,7 @@ return [
 						'value' => '1',
 						'checked' => Settings::Get('api.enabled') == '1' && Settings::Get('api.customer_default'),
 						'visible' => Settings::Get('api.enabled') == '1'
-					]
+					],
 				]
 			],
 			'section_b' => [
@@ -187,6 +194,7 @@ return [
 				'fields' => [
 					'diskspace' => [
 						'label' => lng('customer.diskspace') . ' (' . lng('customer.mib') . ')',
+						'desc' => lng('panel.use_checkbox_for_unlimited'),
 						'type' => 'textul',
 						'value' => 0,
 						'maxlength' => 16,
@@ -194,6 +202,7 @@ return [
 					],
 					'traffic' => [
 						'label' => lng('customer.traffic') . ' (' . lng('customer.gib') . ')',
+						'desc' => lng('panel.use_checkbox_for_unlimited'),
 						'type' => 'textul',
 						'value' => 0,
 						'maxlength' => 14,
@@ -201,6 +210,7 @@ return [
 					],
 					'subdomains' => [
 						'label' => lng('customer.subdomains'),
+						'desc' => lng('panel.use_checkbox_for_unlimited'),
 						'type' => 'textul',
 						'value' => 0,
 						'maxlength' => 9,
@@ -208,6 +218,7 @@ return [
 					],
 					'emails' => [
 						'label' => lng('customer.emails'),
+						'desc' => lng('panel.use_checkbox_for_unlimited'),
 						'type' => 'textul',
 						'value' => 0,
 						'maxlength' => 9,
@@ -215,6 +226,7 @@ return [
 					],
 					'email_accounts' => [
 						'label' => lng('customer.accounts'),
+						'desc' => lng('panel.use_checkbox_for_unlimited'),
 						'type' => 'textul',
 						'value' => 0,
 						'maxlength' => 9,
@@ -222,6 +234,7 @@ return [
 					],
 					'email_forwarders' => [
 						'label' => lng('customer.forwarders'),
+						'desc' => lng('panel.use_checkbox_for_unlimited'),
 						'type' => 'textul',
 						'value' => 0,
 						'maxlength' => 9,
@@ -229,6 +242,7 @@ return [
 					],
 					'email_quota' => [
 						'label' => lng('customer.email_quota') . ' (' . lng('customer.mib') . ')',
+						'desc' => lng('panel.use_checkbox_for_unlimited'),
 						'type' => 'textul',
 						'value' => 0,
 						'maxlength' => 9,
@@ -251,12 +265,14 @@ return [
 					],
 					'ftps' => [
 						'label' => lng('customer.ftps'),
+						'desc' => lng('panel.use_checkbox_for_unlimited'),
 						'type' => 'textul',
 						'value' => 0,
 						'maxlength' => 9
 					],
 					'mysqls' => [
 						'label' => lng('customer.mysqls'),
+						'desc' => lng('panel.use_checkbox_for_unlimited'),
 						'type' => 'textul',
 						'value' => 0,
 						'maxlength' => 9,
@@ -306,7 +322,7 @@ return [
 						'type' => 'checkbox',
 						'value' => '1',
 						'checked' => true
-					]
+					],
 				]
 			]
 		]

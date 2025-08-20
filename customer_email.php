@@ -27,9 +27,10 @@ const AREA = 'customer';
 require __DIR__ . '/lib/init.php';
 
 use Froxlor\Api\Commands\EmailAccounts;
+use Froxlor\Api\Commands\EmailDomains;
 use Froxlor\Api\Commands\EmailForwarders;
 use Froxlor\Api\Commands\Emails;
-use Froxlor\Api\Commands\EmailDomains;
+use Froxlor\CurrentUser;
 use Froxlor\Database\Database;
 use Froxlor\FroxlorLogger;
 use Froxlor\PhpHelper;
@@ -41,7 +42,6 @@ use Froxlor\UI\Panel\UI;
 use Froxlor\UI\Request;
 use Froxlor\UI\Response;
 use Froxlor\Validate\Check;
-use Froxlor\CurrentUser;
 
 // redirect if this customer page is hidden via settings
 if (Settings::IsInList('panel.customer_hide_options', 'email') || $userinfo['emails'] == 0) {
@@ -67,14 +67,24 @@ if ($page == 'overview' || $page == 'emails') {
 			Response::dynamicError($e->getMessage());
 		}
 
+		$actions_links = [];
+		if (CurrentUser::canAddResource('emails')) {
+			$actions_links[] = [
+				'href' => $linker->getLink(['section' => 'email', 'page' => 'email_domain', 'action' => 'add']),
+				'label' => lng('emails.emails_add')
+			];
+		}
+
+		$actions_links[] = [
+			'href' => \Froxlor\Froxlor::getDocsUrl() . 'user-guide/emails/',
+			'target' => '_blank',
+			'icon' => 'fa-solid fa-circle-info',
+			'class' => 'btn-outline-secondary'
+		];
+
 		UI::view('user/table.html.twig', [
 			'listing' => Listing::format($collection, $emaildomain_list_data, 'emaildomain_list'),
-			'actions_links' => CurrentUser::canAddResource('emails') ? [
-				[
-					'href' => $linker->getLink(['section' => 'email', 'page' => 'email_domain', 'action' => 'add']),
-					'label' => lng('emails.emails_add')
-				]
-			] : null,
+			'actions_links' => $actions_links,
 		]);
 	} else {
 		// only emails for one domain -> show email address listing directly
@@ -84,7 +94,7 @@ if ($page == 'overview' || $page == 'emails') {
 if ($page == 'email_domain') {
 	$email_domainid = Request::any('domainid', 0);
 	if ($action == '') {
-		$log->logAction(FroxlorLogger::USR_ACTION, LOG_NOTICE, "viewed customer_email::emails");
+		$log->logAction(FroxlorLogger::USR_ACTION, LOG_INFO, "viewed customer_email::emails");
 
 		$sql_search = [];
 		if ($email_domainid > 0) {
@@ -94,7 +104,7 @@ if ($page == 'email_domain') {
 			$email_list_data = include_once dirname(__FILE__) . '/lib/tablelisting/customer/tablelisting.emails.php';
 			$collection = (new Collection(Emails::class, $userinfo, $sql_search))
 				->withPagination($email_list_data['email_list']['columns'],
-					$email_list_data['email_list']['default_sorting']);
+					$email_list_data['email_list']['default_sorting'], ['domainid=' . $email_domainid]);
 		} catch (Exception $e) {
 			Response::dynamicError($e->getMessage());
 		}
@@ -127,6 +137,12 @@ if ($page == 'email_domain') {
 				'label' => lng('emails.emails_add')
 			];
 		}
+		$actions_links[] = [
+			'href' => \Froxlor\Froxlor::getDocsUrl() . 'user-guide/emails/',
+			'target' => '_blank',
+			'icon' => 'fa-solid fa-circle-info',
+			'class' => 'btn-outline-secondary'
+		];
 
 		UI::view('user/table.html.twig', [
 			'listing' => Listing::format($collection, $email_list_data, 'email_list'),
@@ -144,11 +160,11 @@ if ($page == 'email_domain') {
 		$result = json_decode($json_result, true)['data'];
 
 		if (isset($result['email']) && $result['email'] != '') {
-			if (isset($_POST['send']) && $_POST['send'] == 'send') {
+			if (Request::post('send') == 'send') {
 				try {
 					Emails::getLocal($userinfo, [
 						'id' => $id,
-						'delete_userfiles' => ($_POST['delete_userfiles'] ?? 0)
+						'delete_userfiles' => Request::post('delete_userfiles', 0)
 					])->delete();
 				} catch (Exception $e) {
 					Response::dynamicError($e->getMessage());
@@ -171,9 +187,9 @@ if ($page == 'email_domain') {
 		}
 	} elseif ($action == 'add') {
 		if ($userinfo['emails_used'] < $userinfo['emails'] || $userinfo['emails'] == '-1') {
-			if (isset($_POST['send']) && $_POST['send'] == 'send') {
+			if (Request::post('send') == 'send') {
 				try {
-					$json_result = Emails::getLocal($userinfo, $_POST)->add();
+					$json_result = Emails::getLocal($userinfo, Request::postAll())->add();
 				} catch (Exception $e) {
 					Response::dynamicError($e->getMessage());
 				}
@@ -228,7 +244,12 @@ if ($page == 'email_domain') {
 		$result = json_decode($json_result, true)['data'];
 
 		if (isset($result['email']) && $result['email'] != '') {
-			if (isset($_POST['send']) && $_POST['send'] == 'send') {
+			if (Request::post('send') == 'send') {
+				try {
+					Emails::getLocal($userinfo, Request::postAll())->update();
+				} catch (Exception $e) {
+					Response::dynamicError($e->getMessage());
+				}
 				Response::redirectTo($filename, [
 					'page' => $page
 				]);
@@ -265,40 +286,12 @@ if ($page == 'email_domain') {
 
 			$email_edit_data = include_once dirname(__FILE__) . '/lib/formfields/customer/email/formfield.emails_edit.php';
 
-			if (Settings::Get('catchall.catchall_enabled') != '1') {
-				unset($email_edit_data['emails_edit']['sections']['section_a']['fields']['mail_catchall']);
-			}
-
 			UI::view('user/form.html.twig', [
 				'formaction' => $linker->getLink(['section' => 'email']),
 				'formdata' => $email_edit_data['emails_edit'],
 				'editid' => $id
 			]);
 		}
-	} elseif ($action == 'togglecatchall' && $id != 0) {
-		try {
-			$json_result = Emails::getLocal($userinfo, [
-				'id' => $id
-			])->get();
-		} catch (Exception $e) {
-			Response::dynamicError($e->getMessage());
-		}
-		$result = json_decode($json_result, true)['data'];
-
-		try {
-			Emails::getLocal($userinfo, [
-				'id' => $id,
-				'iscatchall' => ($result['iscatchall'] == '1' ? 0 : 1)
-			])->update();
-		} catch (Exception $e) {
-			Response::dynamicError($e->getMessage());
-		}
-		Response::redirectTo($filename, [
-			'page' => $page,
-			'domainid' => $email_domainid,
-			'action' => 'edit',
-			'id' => $id,
-		]);
 	}
 } elseif ($page == 'accounts') {
 	$email_domainid = Request::any('domainid', 0);
@@ -313,9 +306,9 @@ if ($page == 'email_domain') {
 			}
 			$result = json_decode($json_result, true)['data'];
 
-			if (isset($_POST['send']) && $_POST['send'] == 'send') {
+			if (Request::post('send') == 'send') {
 				try {
-					EmailAccounts::getLocal($userinfo, $_POST)->add();
+					EmailAccounts::getLocal($userinfo, Request::postAll())->add();
 				} catch (Exception $e) {
 					Response::dynamicError($e->getMessage());
 				}
@@ -384,9 +377,9 @@ if ($page == 'email_domain') {
 		$result = json_decode($json_result, true)['data'];
 
 		if (isset($result['popaccountid']) && $result['popaccountid'] != '') {
-			if (isset($_POST['send']) && $_POST['send'] == 'send') {
+			if (Request::post('send') == 'send') {
 				try {
-					EmailAccounts::getLocal($userinfo, $_POST)->update();
+					EmailAccounts::getLocal($userinfo, Request::postAll())->update();
 				} catch (Exception $e) {
 					Response::dynamicError($e->getMessage());
 				}
@@ -443,9 +436,9 @@ if ($page == 'email_domain') {
 		$result = json_decode($json_result, true)['data'];
 
 		if (isset($result['popaccountid']) && $result['popaccountid'] != '') {
-			if (isset($_POST['send']) && $_POST['send'] == 'send') {
+			if (Request::post('send') == 'send') {
 				try {
-					EmailAccounts::getLocal($userinfo, $_POST)->update();
+					EmailAccounts::getLocal($userinfo, Request::postAll())->update();
 				} catch (Exception $e) {
 					Response::dynamicError($e->getMessage());
 				}
@@ -502,9 +495,9 @@ if ($page == 'email_domain') {
 		$result = json_decode($json_result, true)['data'];
 
 		if (isset($result['popaccountid']) && $result['popaccountid'] != '') {
-			if (isset($_POST['send']) && $_POST['send'] == 'send') {
+			if (Request::post('send') == 'send') {
 				try {
-					EmailAccounts::getLocal($userinfo, $_POST)->delete();
+					EmailAccounts::getLocal($userinfo, Request::postAll())->delete();
 				} catch (Exception $e) {
 					Response::dynamicError($e->getMessage());
 				}
@@ -538,9 +531,9 @@ if ($page == 'email_domain') {
 			$result = json_decode($json_result, true)['data'];
 
 			if (isset($result['email']) && $result['email'] != '') {
-				if (isset($_POST['send']) && $_POST['send'] == 'send') {
+				if (Request::post('send') == 'send') {
 					try {
-						EmailForwarders::getLocal($userinfo, $_POST)->add();
+						EmailForwarders::getLocal($userinfo, Request::postAll())->add();
 					} catch (Exception $e) {
 						Response::dynamicError($e->getMessage());
 					}
@@ -600,22 +593,15 @@ if ($page == 'email_domain') {
 		$result = json_decode($json_result, true)['data'];
 
 		if (isset($result['destination']) && $result['destination'] != '') {
-			if (isset($_POST['forwarderid'])) {
-				$forwarderid = intval($_POST['forwarderid']);
-			} elseif (isset($_GET['forwarderid'])) {
-				$forwarderid = intval($_GET['forwarderid']);
-			} else {
-				$forwarderid = 0;
-			}
-
+			$forwarderid = Request::any('forwarderid', 0);
 			$result['destination'] = explode(' ', $result['destination']);
 
 			if (isset($result['destination'][$forwarderid]) && $result['email'] != $result['destination'][$forwarderid]) {
 				$forwarder = $result['destination'][$forwarderid];
 
-				if (isset($_POST['send']) && $_POST['send'] == 'send') {
+				if (Request::post('send') == 'send') {
 					try {
-						EmailForwarders::getLocal($userinfo, $_POST)->delete();
+						EmailForwarders::getLocal($userinfo, Request::postAll())->delete();
 					} catch (Exception $e) {
 						Response::dynamicError($e->getMessage());
 					}

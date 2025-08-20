@@ -42,12 +42,14 @@ return [
 			'c.description' => [
 				'label' => lng('admin.phpsettings.description'),
 				'field' => 'description',
+				'isdefaultsearchfield' => true,
 			],
 			'domains' => [
 				'label' => lng('admin.phpsettings.activedomains'),
 				'field' => 'domains',
 				'callback' => [PHPConf::class, 'domainList'],
 				'searchable' => false,
+				'sortable' => false,
 			],
 			'fpmdesc' => [
 				'label' => lng('admin.phpsettings.fpmdesc'),

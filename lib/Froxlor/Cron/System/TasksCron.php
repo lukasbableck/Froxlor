@@ -25,9 +25,12 @@
 
 namespace Froxlor\Cron\System;
 
+use Exception;
 use Froxlor\Cron\FroxlorCron;
 use Froxlor\Cron\Http\ConfigIO;
 use Froxlor\Cron\Http\HttpConfigBase;
+use Froxlor\Cron\Http\LetsEncrypt\AcmeSh;
+use Froxlor\Cron\Mail\Rspamd;
 use Froxlor\Cron\TaskId;
 use Froxlor\Database\Database;
 use Froxlor\Dns\PowerDNS;
@@ -40,13 +43,16 @@ use PDO;
 class TasksCron extends FroxlorCron
 {
 
+	/**
+	 * @throws Exception
+	 */
 	public static function run()
 	{
 		/**
 		 * LOOK INTO TASKS TABLE TO SEE IF THERE ARE ANY UNDONE JOBS
 		 */
 		self::$cronlog->logAction(FroxlorLogger::CRON_ACTION, LOG_INFO, "TasksCron: Searching for tasks to do");
-		// no type 99 (regenerate cron.d-file) and no type 20 (customer backup)
+		// no type 99 (regenerate cron.d-file) and no type 20 (customer data export)
 		// order by type descending to re-create bind and then webserver at the end
 		$result_tasks_stmt = Database::query("
 			SELECT `id`, `type`, `data` FROM `" . TABLE_PANEL_TASKS . "` WHERE `type` <> '99' AND `type` <> '20' ORDER BY `type` DESC, `id` ASC
@@ -98,6 +104,11 @@ class TasksCron extends FroxlorCron
 				 * refs #293
 				 */
 				self::deleteFtpData($row);
+			} elseif ($row['type'] == TaskId::REBUILD_RSPAMD && (int)Settings::Get('antispam.activated') != 0) {
+				/**
+				 * TYPE=9 Rebuild antispam config
+				 */
+				self::rebuildAntiSpamConfigs();
 			} elseif ($row['type'] == TaskId::CREATE_QUOTA && (int)Settings::Get('system.diskquota_enabled') != 0) {
 				/**
 				 * TYPE=10 Set the filesystem - quota
@@ -115,6 +126,12 @@ class TasksCron extends FroxlorCron
 				 */
 				FroxlorLogger::getInstanceOf()->logAction(FroxlorLogger::CRON_ACTION, LOG_NOTICE, "Removing Let's Encrypt entries for domain " . $row['data']['domain']);
 				Domain::doLetsEncryptCleanUp($row['data']['domain']);
+			} elseif ($row['type'] == TaskId::UPDATE_LE_SERVICES) {
+				/**
+				 * TYPE=13 set configuration for selected services regarding the use of Let's Encrypt certificate
+				 */
+				FroxlorLogger::getInstanceOf()->logAction(FroxlorLogger::CRON_ACTION, LOG_NOTICE, "Updating Let's Encrypt configuration for selected services");
+				AcmeSh::renewHookConfigs(FroxlorLogger::getInstanceOf());
 			}
 		}
 
@@ -266,13 +283,7 @@ class TasksCron extends FroxlorCron
 	private static function rebuildDnsConfigs()
 	{
 		$dnssrv = '\\Froxlor\\Cron\\Dns\\' . Settings::Get('system.dns_server');
-
 		$nameserver = new $dnssrv(FroxlorLogger::getInstanceOf());
-
-		if (Settings::Get('dkim.use_dkim') == '1') {
-			$nameserver->writeDKIMconfigs();
-		}
-
 		$nameserver->writeConfigs();
 	}
 
@@ -330,10 +341,11 @@ class TasksCron extends FroxlorCron
 				// webserver logs
 				$logsdir = FileDir::makeCorrectFile(Settings::Get('system.logfiles_directory') . '/' . $row['data']['loginname']);
 
-				if (file_exists($logsdir) && $logsdir != '/' && $logsdir != FileDir::makeCorrectDir(Settings::Get('system.logfiles_directory')) && substr($logsdir, 0, strlen(Settings::Get('system.logfiles_directory'))) == Settings::Get('system.logfiles_directory')) {
+				if (file_exists(dirname($logsdir)) && $logsdir != '/' && $logsdir != FileDir::makeCorrectDir(Settings::Get('system.logfiles_directory')) && substr($logsdir, 0, strlen(Settings::Get('system.logfiles_directory'))) == Settings::Get('system.logfiles_directory')) {
 					// build up wildcard for webX-{access,error}.log{*}
-					$logsdir .= '-*';
-					FileDir::safe_exec('rm -f ' . escapeshellarg($logsdir));
+					$logsdir .= '-*.log';
+					FroxlorLogger::getInstanceOf()->logAction(FroxlorLogger::CRON_ACTION, LOG_NOTICE, 'Running: rm -rf ' .FileDir::makeCorrectFile($logsdir));
+					FileDir::safe_exec('rm -f ' . FileDir::makeCorrectFile($logsdir));
 				}
 			}
 		}
@@ -344,24 +356,16 @@ class TasksCron extends FroxlorCron
 		FroxlorLogger::getInstanceOf()->logAction(FroxlorLogger::CRON_ACTION, LOG_INFO, 'TasksCron: Task7 started - deleting customer e-mail data');
 
 		if (is_array($row['data'])) {
-			if (isset($row['data']['loginname']) && isset($row['data']['email'])) {
+			if (isset($row['data']['loginname']) && isset($row['data']['emailpath'])) {
 				// remove specific maildir
-				$email_full = $row['data']['email'];
+				$email_full = $row['data']['emailpath'];
 				if (empty($email_full)) {
-					FroxlorLogger::getInstanceOf()->logAction(FroxlorLogger::CRON_ACTION, LOG_ERR, 'FATAL: Task7 asks to delete a email account but email field is empty!');
-				}
-				$email_user = substr($email_full, 0, strrpos($email_full, "@"));
-				$email_domain = substr($email_full, strrpos($email_full, "@") + 1);
-				$maildirname = trim(Settings::Get('system.vmail_maildirname'));
-				// Add trailing slash to Maildir if needed
-				$maildirpath = $maildirname;
-				if (!empty($maildirname) and substr($maildirname, -1) != "/") {
-					$maildirpath .= "/";
+					FroxlorLogger::getInstanceOf()->logAction(FroxlorLogger::CRON_ACTION, LOG_ERR, 'FATAL: Task7 asks to delete a email account but emailpath field is empty!');
 				}
 
-				$maildir = FileDir::makeCorrectDir(Settings::Get('system.vmail_homedir') . '/' . $row['data']['loginname'] . '/' . $email_domain . '/' . $email_user);
+				$maildir = FileDir::makeCorrectDir($email_full);
 
-				if ($maildir != '/' && !empty($maildir) && !empty($email_full) && $maildir != Settings::Get('system.vmail_homedir') && substr($maildir, 0, strlen(Settings::Get('system.vmail_homedir'))) == Settings::Get('system.vmail_homedir') && is_dir($maildir) && is_dir(FileDir::makeCorrectDir($maildir . '/' . $maildirpath)) && fileowner($maildir) == Settings::Get('system.vmail_uid') && filegroup($maildir) == Settings::Get('system.vmail_gid')) {
+				if ($maildir != '/' && !empty($maildir) && $maildir != Settings::Get('system.vmail_homedir') && substr($maildir, 0, strlen(Settings::Get('system.vmail_homedir'))) == Settings::Get('system.vmail_homedir') && is_dir($maildir) && fileowner($maildir) == Settings::Get('system.vmail_uid') && filegroup($maildir) == Settings::Get('system.vmail_gid')) {
 					FroxlorLogger::getInstanceOf()->logAction(FroxlorLogger::CRON_ACTION, LOG_NOTICE, 'Running: rm -rf ' . escapeshellarg($maildir));
 					// mail-address allows many special characters, see http://en.wikipedia.org/wiki/Email_address#Local_part
 					$return = false;
@@ -373,23 +377,6 @@ class TasksCron extends FroxlorCron
 						'~',
 						'?'
 					]);
-				} else {
-					// backward-compatibility for old folder-structure
-					$maildir_old = FileDir::makeCorrectDir(Settings::Get('system.vmail_homedir') . '/' . $row['data']['loginname'] . '/' . $row['data']['email']);
-
-					if ($maildir_old != '/' && !empty($maildir_old) && $maildir_old != Settings::Get('system.vmail_homedir') && substr($maildir_old, 0, strlen(Settings::Get('system.vmail_homedir'))) == Settings::Get('system.vmail_homedir') && is_dir($maildir_old) && fileowner($maildir_old) == Settings::Get('system.vmail_uid') && filegroup($maildir_old) == Settings::Get('system.vmail_gid')) {
-						FroxlorLogger::getInstanceOf()->logAction(FroxlorLogger::CRON_ACTION, LOG_NOTICE, 'Running: rm -rf ' . escapeshellarg($maildir_old));
-						// mail-address allows many special characters, see http://en.wikipedia.org/wiki/Email_address#Local_part
-						$return = false;
-						FileDir::safe_exec('rm -rf ' . escapeshellarg($maildir_old), $return, [
-							'|',
-							'&',
-							'`',
-							'$',
-							'~',
-							'?'
-						]);
-					}
 				}
 			}
 		}
@@ -447,5 +434,14 @@ class TasksCron extends FroxlorCron
 				}
 			}
 		}
+	}
+
+	/**
+	 * @throws Exception
+	 */
+	private static function rebuildAntiSpamConfigs()
+	{
+		$antispam = new Rspamd(FroxlorLogger::getInstanceOf());
+		$antispam->writeConfigs();
 	}
 }

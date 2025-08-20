@@ -27,6 +27,7 @@ const AREA = 'customer';
 require __DIR__ . '/lib/init.php';
 
 use Froxlor\Api\Commands\Ftps as Ftps;
+use Froxlor\CurrentUser;
 use Froxlor\Database\Database;
 use Froxlor\FileDir;
 use Froxlor\FroxlorLogger;
@@ -37,7 +38,6 @@ use Froxlor\UI\Listing;
 use Froxlor\UI\Panel\UI;
 use Froxlor\UI\Request;
 use Froxlor\UI\Response;
-use Froxlor\CurrentUser;
 
 // redirect if this customer page is hidden via settings
 if (Settings::IsInList('panel.customer_hide_options', 'ftp')) {
@@ -57,15 +57,19 @@ if ($page == 'overview' || $page == 'accounts') {
 			Response::dynamicError($e->getMessage());
 		}
 
-		$actions_links = false;
+		$actions_links = [];
 		if (CurrentUser::canAddResource('ftps')) {
-			$actions_links = [
-				[
-					'href' => $linker->getLink(['section' => 'ftp', 'page' => 'accounts', 'action' => 'add']),
-					'label' => lng('ftp.account_add')
-				]
+			$actions_links[] = [
+				'href' => $linker->getLink(['section' => 'ftp', 'page' => 'accounts', 'action' => 'add']),
+				'label' => lng('ftp.account_add')
 			];
 		}
+		$actions_links[] = [
+			'href' => \Froxlor\Froxlor::getDocsUrl() . 'user-guide/ftp-accounts/',
+			'target' => '_blank',
+			'icon' => 'fa-solid fa-circle-info',
+			'class' => 'btn-outline-secondary'
+		];
 
 		UI::view('user/table.html.twig', [
 			'listing' => Listing::format($collection, $ftp_list_data, 'ftp_list'),
@@ -83,9 +87,9 @@ if ($page == 'overview' || $page == 'accounts') {
 		$result = json_decode($json_result, true)['data'];
 
 		if (isset($result['username']) && $result['username'] != $userinfo['loginname']) {
-			if (isset($_POST['send']) && $_POST['send'] == 'send') {
+			if (Request::post('send') == 'send') {
 				try {
-					Ftps::getLocal($userinfo, $_POST)->delete();
+					Ftps::getLocal($userinfo, Request::postAll())->delete();
 				} catch (Exception $e) {
 					Response::dynamicError($e->getMessage());
 				}
@@ -104,9 +108,9 @@ if ($page == 'overview' || $page == 'accounts') {
 		}
 	} elseif ($action == 'add') {
 		if ($userinfo['ftps_used'] < $userinfo['ftps'] || $userinfo['ftps'] == '-1') {
-			if (isset($_POST['send']) && $_POST['send'] == 'send') {
+			if (Request::post('send') == 'send') {
 				try {
-					Ftps::getLocal($userinfo, $_POST)->add();
+					Ftps::getLocal($userinfo, Request::postAll())->add();
 				} catch (Exception $e) {
 					Response::dynamicError($e->getMessage());
 				}
@@ -160,9 +164,9 @@ if ($page == 'overview' || $page == 'accounts') {
 		$result = json_decode($json_result, true)['data'];
 
 		if (isset($result['username']) && $result['username'] != '') {
-			if (isset($_POST['send']) && $_POST['send'] == 'send') {
+			if (Request::post('send') == 'send') {
 				try {
-					Ftps::getLocal($userinfo, $_POST)->update();
+					Ftps::getLocal($userinfo, Request::postAll())->update();
 				} catch (Exception $e) {
 					Response::dynamicError($e->getMessage());
 				}

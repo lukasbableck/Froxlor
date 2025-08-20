@@ -26,6 +26,7 @@
 namespace Froxlor\Cron\Http\LetsEncrypt;
 
 use Froxlor\Cron\FroxlorCron;
+use Froxlor\Cron\TaskId;
 use Froxlor\Database\Database;
 use Froxlor\Domain\Domain;
 use Froxlor\FileDir;
@@ -68,7 +69,8 @@ class AcmeSh extends FroxlorCron
 	 * run the task
 	 *
 	 * @param bool $internal
-	 * @return number
+	 * @return int
+	 * @throws \Exception
 	 */
 	public static function run(bool $internal = false)
 	{
@@ -83,7 +85,10 @@ class AcmeSh extends FroxlorCron
 			$renew_domains = self::renewDomains(true);
 			if ($issue_froxlor || !empty($issue_domains) || !empty($renew_froxlor) || $renew_domains) {
 				// insert task to generate certificates and vhost-configs
-				Cronjob::inserttask(1);
+				Cronjob::inserttask(TaskId::REBUILD_VHOST);
+				if ($renew_froxlor) {
+					Cronjob::inserttask(TaskId::UPDATE_LE_SERVICES);
+				}
 			}
 			return 0;
 		}
@@ -203,7 +208,7 @@ class AcmeSh extends FroxlorCron
 		// This is easiest done by just creating a new task ;)
 		if ($changedetected) {
 			if (self::$no_inserttask == false) {
-				Cronjob::inserttask(1);
+				Cronjob::inserttask(TaskId::REBUILD_VHOST);
 			}
 			FroxlorLogger::getInstanceOf()->logAction(FroxlorLogger::CRON_ACTION, LOG_INFO, "Let's Encrypt certificates have been updated");
 		} else {
@@ -216,6 +221,7 @@ class AcmeSh extends FroxlorCron
 	 * check whether we need to issue a new certificate for froxlor itself
 	 *
 	 * @return boolean
+	 * @throws \Exception
 	 */
 	private static function issueFroxlorVhost()
 	{
@@ -227,9 +233,7 @@ class AcmeSh extends FroxlorCron
 			");
 			$froxlor_ssl = Database::pexecute_first($froxlor_ssl_settings_stmt);
 			// also check for possible existing certificate
-			if (($froxlor_ssl && empty($froxlor_ssl['validtodate']))
-				|| (!$froxlor_ssl && !self::checkFsFilesAreNewer(Settings::Get('system.hostname'), date('Y-m-d H:i:s')))
-			) {
+			if (!$froxlor_ssl || empty($froxlor_ssl['validtodate'])) {
 				return true;
 			}
 		}
@@ -320,9 +324,12 @@ EOC;
 			WHERE
 				dom.`customerid` = cust.`customerid`
 				AND cust.deactivated = 0
+				AND dom.deactivated = 0
+				AND dom.`ssl_enabled` = 1
 				AND dom.`letsencrypt` = 1
 				AND dom.`aliasdomain` IS NULL
 				AND dom.`iswildcarddomain` = 0
+				AND dom.`email_only` = 0
 				AND domssl.`validtodate` IS NULL
 		");
 		$customer_ssl = $certificates_stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -336,6 +343,7 @@ EOC;
 	 * check whether we need to renew-check the certificate for froxlor itself
 	 *
 	 * @return boolean
+	 * @throws \Exception
 	 */
 	private static function renewFroxlorVhost()
 	{
@@ -381,9 +389,13 @@ EOC;
 			WHERE
 				dom.`customerid` = cust.`customerid`
 				AND cust.deactivated = 0
+				AND dom.deactivated = 0
+				AND dom.`ssl_enabled` = 1
 				AND dom.`letsencrypt` = 1
 				AND dom.`aliasdomain` IS NULL
 				AND dom.`iswildcarddomain` = 0
+				AND dom.`email_only` = 0
+				AND dom.`ssl_redirect` != 2
 		");
 		$renew_certs = $certificates_stmt->fetchAll(PDO::FETCH_ASSOC);
 		if ($renew_certs) {
@@ -517,9 +529,11 @@ EOC;
 
 				self::validateDns($domains, $certrow['domainid'], $cronlog);
 
-				self::runAcmeSh($certrow, $domains, $cronlog, $do_force);
+				self::runAcmeSh($certrow, $domains, $cronlog, $do_force, $certrow['domainid'] == 0);
 			} else {
 				$cronlog->logAction(FroxlorLogger::CRON_ACTION, LOG_WARNING, "Skipping Let's Encrypt generation for " . $certrow['domain'] . " due to an enabled ssl_redirect");
+				// we need another reconfigure in order to get the certificate
+				Cronjob::inserttask(TaskId::REBUILD_VHOST);
 			}
 		}
 	}
@@ -530,6 +544,7 @@ EOC;
 	 * @param array $domains
 	 * @param int $domain_id
 	 * @param FroxlorLogger $cronlog
+	 * @throws \Exception
 	 */
 	private static function validateDns(array &$domains, $domain_id, &$cronlog)
 	{
@@ -556,12 +571,16 @@ EOC;
 						Settings::Set('system.le_froxlor_enabled', 0);
 					}
 					$cronlog->logAction(FroxlorLogger::CRON_ACTION, LOG_WARNING, "Let's Encrypt deactivated for domain " . $domain);
+					if (!defined('CRON_IS_FORCED') && !defined('CRON_DEBUG_FLAG')) {
+						// email info to admin that lets encrypt has been disabled for this domain
+						Cronjob::notifyMailToAdmin("Let's Encrypt has been deactivated for domain '" . $domain . "' due to failed dns validation (wrong or no IP address)");
+					}
 				}
 			}
 		}
 	}
 
-	private static function runAcmeSh(array $certrow, array $domains, &$cronlog = null, $force = false)
+	private static function runAcmeSh(array $certrow, array $domains, &$cronlog = null, bool $force = false, bool $renew_hook = false)
 	{
 		if (!empty($domains)) {
 			$acmesh_cmd = self::getAcmeSh() . " --server " . self::$apiserver . " --issue -d " . implode(" -d ", $domains);
@@ -582,19 +601,122 @@ EOC;
 			if ($force) {
 				$acmesh_cmd .= " --force";
 			}
+			if ($renew_hook
+				&& !empty(trim(Settings::Get('system.le_renew_services') ?? ""))
+				&& !empty(trim(Settings::Get('system.le_renew_hook') ?? ""))
+			) {
+				$acmesh_cmd .= " --renew-hook '" . Settings::Get('system.le_renew_hook') . "'";
+			}
 			if (defined('CRON_DEBUG_FLAG')) {
 				$acmesh_cmd .= " --debug";
 			}
 
-			$acme_result = FileDir::safe_exec($acmesh_cmd);
+			$exit_code = null;
+			$acme_result = FileDir::safe_exec($acmesh_cmd, $exit_code);
 			// debug output of acme.sh run
 			$cronlog->logAction(FroxlorLogger::CRON_ACTION, LOG_DEBUG, implode("\n", $acme_result));
 
-			self::certToDb($certrow, $cronlog, $acme_result);
+			if ($exit_code != 0) {
+				$cronlog->logAction(FroxlorLogger::CRON_ACTION, LOG_DEBUG, "Non-successful exit-code returned :(");
+				if (!defined('CRON_IS_FORCED') && !defined('CRON_DEBUG_FLAG')) {
+					Cronjob::notifyMailToAdmin("Let's Encrypt certificate could not be obtained for: " . implode(", ", $domains) . "\n\n" . implode("\n", $acme_result));
+				}
+			} else {
+				$cronlog->logAction(FroxlorLogger::CRON_ACTION, LOG_DEBUG, "Successful exit-code returned - storing certificate");
+				$cert_stored = self::certToDb($certrow, $cronlog, $acme_result);
+
+				if ($cert_stored && $renew_hook) {
+					self::renewHookConfigs($cronlog);
+				}
+			}
 		}
 	}
 
-	private static function certToDb($certrow, &$cronlog, $acme_result)
+	public static function renewHookConfigs($cronlog)
+	{
+		if (!empty(trim(Settings::Get('system.le_renew_services') ?? ""))
+			&& !empty(trim(Settings::Get('system.le_renew_hook') ?? ""))
+		) {
+
+			$cronlog->logAction(FroxlorLogger::CRON_ACTION, LOG_DEBUG, "Renew-hook is enabled - adjusting configurations");
+
+			$certificate_folder = self::getCertificateFolder(strtolower(Settings::Get('system.hostname')));
+
+			if (empty($certificate_folder)) {
+				$cronlog->logAction(FroxlorLogger::CRON_ACTION, LOG_INFO, "No certificate folder for '" . Settings::Get('system.hostname') . "' found");
+				return;
+			}
+
+			$fullchain = FileDir::makeCorrectFile($certificate_folder . '/fullchain.cer');
+			$keyfile = FileDir::makeCorrectFile($certificate_folder . '/' . strtolower(Settings::Get('system.hostname')) . '.key');
+			$ca_file = FileDir::makeCorrectFile($certificate_folder . '/ca.cer');
+
+			if (!file_exists($fullchain) || !file_exists($keyfile) || !file_exists($ca_file)) {
+				$cronlog->logAction(FroxlorLogger::CRON_ACTION, LOG_INFO, "At least one of the required certificate files for '" . Settings::Get('system.hostname') . "' could not be found");
+				return;
+			}
+
+			$dovecot_conf = '/etc/dovecot/conf.d/99-froxlor.ssl.conf'; // @fixme setting?
+
+			if (Settings::IsInList('system.le_renew_services', 'postfix')) {
+				// "postconf -e" for postfix
+				FileDir::safe_exec('postconf -e smtpd_tls_cert_file=' . escapeshellarg($fullchain));
+				FileDir::safe_exec('postconf -e smtpd_tls_key_file=' . escapeshellarg($keyfile));
+			}
+			if (Settings::IsInList('system.le_renew_services', 'dovecot')) {
+				// custom config for dovecot
+				$ssl_content = <<<EOSSL
+# Autogenerated configuration by froxlor.
+# Do not manually edit this file as it will be overwritten.
+
+ssl = yes
+ssl_cert = <{$fullchain}
+ssl_key = <{$keyfile}
+EOSSL;
+				file_put_contents($dovecot_conf, $ssl_content);
+			} elseif (Settings::IsInList('system.le_renew_services', 'dovecot24')) {
+					// custom config for dovecot
+					$ssl_content = <<<EOSSL
+# Autogenerated configuration by froxlor.
+# Do not manually edit this file as it will be overwritten.
+
+ssl = yes
+ssl_server_cert_file = {$fullchain}
+ssl_server_key_file = {$keyfile}
+EOSSL;
+					file_put_contents($dovecot_conf, $ssl_content);
+			} elseif (file_exists($dovecot_conf)) {
+				// safely remove the autogenerated config file
+				unlink($dovecot_conf);
+			}
+			if (Settings::IsInList('system.le_renew_services', 'proftpd')) {
+				$proftpd_conf = '/etc/proftpd/tls.conf'; // @fixme setting?
+				$rval = false;
+				// ECC certificate or not?
+				if (strpos($certificate_folder, '_ecc') === false) {
+					// comment out ECC related settings
+					FileDir::safe_exec("sed -i.bak 's|^TLSECCertificateFile|# TLSECCertificateFile|' " . escapeshellarg($proftpd_conf), $rval, ['|', '?']);
+					FileDir::safe_exec("sed -i.bak 's|^TLSECCertificateKeyFile|# TLSECCertificateKeyFile|' " . escapeshellarg($proftpd_conf), $rval, ['|', '?']);
+					// add RSA directives
+					FileDir::safe_exec("sed -i.bak 's|^#\?\s\?TLSRSACertificateFile.*|TLSRSACertificateFile " . $fullchain . "|' " . escapeshellarg($proftpd_conf), $rval, ['|', '?']);
+					FileDir::safe_exec("sed -i.bak 's|^#\?\s\?TLSRSACertificateKeyFile.*|TLSRSACertificateKeyFile " . $keyfile . "|' " . escapeshellarg($proftpd_conf), $rval, ['|', '?']);
+				} else {
+					// comment out RSA related settings
+					FileDir::safe_exec("sed -i.bak 's|^TLSRSACertificateFile|# TLSRSACertificateFile|' " . escapeshellarg($proftpd_conf), $rval, ['|', '?']);
+					FileDir::safe_exec("sed -i.bak 's|^TLSRSACertificateKeyFile|# TLSRSACertificateKeyFile|' " . escapeshellarg($proftpd_conf), $rval, ['|', '?']);
+					// add ECC directives
+					FileDir::safe_exec("sed -i.bak 's|^#\?\s\?TLSECCertificateFile.*|TLSECCertificateFile " . $fullchain . "|' " . escapeshellarg($proftpd_conf), $rval, ['|', '?']);
+					FileDir::safe_exec("sed -i.bak 's|^#\?\s\?TLSECCertificateKeyFile.*|TLSECCertificateKeyFile " . $keyfile . "|' " . escapeshellarg($proftpd_conf), $rval, ['|', '?']);
+				}
+				FileDir::safe_exec("sed -i.bak 's|^#\?\s\?TLSCACertificateFile.*|TLSCACertificateFile " . $ca_file . "|' " . escapeshellarg($proftpd_conf), $rval, ['|', '?']);
+			}
+
+			// reload the services
+			FileDir::safe_exec(Settings::Get('system.le_renew_hook'));
+		}
+	}
+
+	private static function certToDb($certrow, &$cronlog, $acme_result): bool
 	{
 		$return = [];
 		self::readCertificateToVar(strtolower($certrow['domain']), $return, $cronlog);
@@ -625,12 +747,14 @@ EOC;
 				}
 
 				$cronlog->logAction(FroxlorLogger::CRON_ACTION, LOG_INFO, "Updated Let's Encrypt certificate for " . $certrow['domain']);
+				return true;
 			} else {
 				$cronlog->logAction(FroxlorLogger::CRON_ACTION, LOG_ERR, "Got non-successful Let's Encrypt response for " . $certrow['domain'] . ":\n" . implode("\n", $acme_result));
 			}
 		} else {
 			$cronlog->logAction(FroxlorLogger::CRON_ACTION, LOG_ERR, "Could not get Let's Encrypt certificate for " . $certrow['domain'] . ":\n" . implode("\n", $acme_result));
 		}
+		return false;
 	}
 
 	/**

@@ -121,7 +121,7 @@ class UI
 			'domain' => self::getCookieHost(),
 			'secure' => self::requestIsHttps(),
 			'httponly' => true,
-			'samesite' => 'Strict'
+			'samesite' => 'Lax'
 		]);
 		session_start();
 
@@ -141,8 +141,6 @@ class UI
 		header("Content-Security-Policy: " . $csp_content);
 		header("X-Content-Security-Policy: " . $csp_content);
 		header("X-WebKit-CSP: " . $csp_content);
-
-		header("X-XSS-Protection: 1; mode=block");
 
 		// Don't allow to load Froxlor in an iframe to prevent i.e. clickjacking
 		header("X-Frame-Options: DENY");
@@ -322,6 +320,10 @@ class UI
 					$theme = CurrentUser::getField('theme');
 				}
 			}
+		}
+		// check for template-variant
+		if (preg_match("/([a-z0-9.\-]+)_([a-z0-9.\-]+)/i", $theme, $matches)) {
+			$theme = $matches[1];
 		}
 		if (!file_exists(Froxlor::getInstallDir() . '/templates/' . $theme)) {
 			PhpHelper::phpErrHandler(E_USER_WARNING, "Theme '" . $theme . "' could not be found.", __FILE__, __LINE__);

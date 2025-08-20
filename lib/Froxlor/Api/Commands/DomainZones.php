@@ -115,7 +115,7 @@ class DomainZones extends ApiCommand implements ResourceEntity
 
 		// validation
 		$errors = [];
-		if (empty($record)) {
+		if (empty(trim($record))) {
 			$record = "@";
 		}
 
@@ -178,7 +178,7 @@ class DomainZones extends ApiCommand implements ResourceEntity
 				}
 			}
 		} elseif ($type == 'CAA' && !empty($content)) {
-			$re = '/(?\'critical\'\d)\h*(?\'type\'iodef|issue|issuewild)\h*(?\'value\'(?\'issuevalue\'"(?\'domain\'(?=.{3,128}$)(?>(?>[a-zA-Z0-9]+[a-zA-Z0-9-]*[a-zA-Z0-9]+|[a-zA-Z0-9]+)\.)*(?>[a-zA-Z]{2,}|[a-zA-Z0-9]{2,}\.[a-zA-Z]{2,}))[;\h]*(?\'parameters\'(?>[a-zA-Z0-9]{1,60}=[a-zA-Z0-9]{1,60}\h*)+)?")|(?\'iodefvalue\'"(?\'url\'(mailto:.*|http:\/\/.*|https:\/\/.*))"))/';
+			$re = '/(?\'critical\'\d+)\h*(?\'type\'iodef|issue|issuewild)\h*(?\'value\'(?\'issuevalue\'"(?\'domain\'(?=.{3,128}$)(?>(?>[a-zA-Z0-9]+[a-zA-Z0-9-]*[a-zA-Z0-9]+|[a-zA-Z0-9]+)\.)*(?>[a-zA-Z]{2,}|[a-zA-Z0-9]{2,}\.[a-zA-Z]{2,}))[;\h]*(?\'parameters\'(?>[a-zA-Z0-9]{1,60}=[a-zA-Z0-9:\.\/\-]{1,60}\h*)+)?")|(?\'iodefvalue\'"(?\'url\'(mailto:.*|http:\/\/.*|https:\/\/.*))"))/';
 			preg_match($re, $content, $matches);
 
 			if (empty($matches)) {
@@ -227,7 +227,7 @@ class DomainZones extends ApiCommand implements ResourceEntity
 				// remove it for checks
 				$content = substr($content, 0, -1);
 			}
-			if (!Validate::validateDomain($content)) {
+			if (!empty($content) && !Validate::validateDomain($content)) {
 				$errors[] = lng('error.dns_mx_needdom');
 			} else {
 				// check whether there is a CNAME-record for the same resource
@@ -244,6 +244,10 @@ class DomainZones extends ApiCommand implements ResourceEntity
 			}
 			// append trailing dot (again)
 			$content .= '.';
+			// if content is only ".", the prio needs to be 0 which results in a "null mx" entry
+			if ($content == '.' && $prio != 0) {
+				$prio = 0;
+			}
 		} elseif ($type == 'NS') {
 			// check for trailing dot
 			if (substr($content, -1) == '.') {
@@ -301,6 +305,8 @@ class DomainZones extends ApiCommand implements ResourceEntity
 				$content .= '.';
 			}
 		} elseif ($type == 'SSHFP' && !empty($content)) {
+			$content = $content;
+		} elseif ($type == 'TLSA' && !empty($content)) {
 			$content = $content;
 		} elseif ($type == 'TXT' && !empty($content)) {
 			// check that TXT content is enclosed in " "

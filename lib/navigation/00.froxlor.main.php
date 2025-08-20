@@ -133,9 +133,9 @@ return [
 					'show_element' => (Settings::Get('logger.enabled') == true) && (!Settings::IsInList('panel.customer_hide_options', 'extras.logger'))
 				],
 				[
-					'url' => 'customer_extras.php?page=backup',
-					'label' => lng('menue.extras.backup'),
-					'show_element' => (Settings::Get('system.backupenabled') == true) && (!Settings::IsInList('panel.customer_hide_options', 'extras.backup'))
+					'url' => 'customer_extras.php?page=export',
+					'label' => lng('menue.extras.export'),
+					'show_element' => (Settings::Get('system.exportenabled') == true) && (!Settings::IsInList('panel.customer_hide_options', 'extras.export'))
 				]
 			]
 		],
@@ -161,13 +161,13 @@ return [
 			'show_element' => (!Settings::IsInList('panel.customer_hide_options', 'misc.documentation')),
 			'elements' => [
 				[
-					'url' => 'https://docs.froxlor.org/v2/user-guide/',
+					'url' => \Froxlor\Froxlor::getDocsUrl() . 'user-guide/',
 					'label' => lng('admin.userguide'),
 					'new_window' => true,
 					'is_external' => true,
 				],
 				[
-					'url' => 'https://docs.froxlor.org/v2/api-guide/',
+					'url' => \Froxlor\Froxlor::getDocsUrl() . 'api-guide/',
 					'label' => lng('admin.apiguide'),
 					'new_window' => true,
 					'show_element' => Settings::Get('api.enabled') == 1 && CurrentUser::getField('api_allowed') == 1,
@@ -186,7 +186,7 @@ return [
 					'url' => 'admin_customers.php?page=customers',
 					'label' => lng('admin.customers'),
 					'required_resources' => 'customers',
-					'add_shortlink' => CurrentUser::canAddResource('customers') ? 'admin_customers.php?page=customers&action=add' : null,
+					'add_shortlink' => CurrentUser::isAdmin() && CurrentUser::canAddResource('customers') ? 'admin_customers.php?page=customers&action=add' : null,
 				],
 				[
 					'url' => 'admin_admins.php?page=admins',
@@ -198,7 +198,7 @@ return [
 					'url' => 'admin_domains.php?page=domains',
 					'label' => lng('admin.domains'),
 					'required_resources' => 'domains',
-					'add_shortlink' => CurrentUser::canAddResource('domains') ? 'admin_domains.php?page=domains&action=add' : null,
+					'add_shortlink' => CurrentUser::isAdmin() && CurrentUser::canAddResource('domains') ? 'admin_domains.php?page=domains&action=add' : null,
 				],
 				[
 					'url' => 'admin_domains.php?page=sslcertificates',
@@ -244,7 +244,6 @@ return [
 		],
 		'server' => [
 			'label' => lng('admin.server'),
-			'required_resources' => 'change_serversettings',
 			'icon' => 'fa-solid fa-server',
 			'elements' => [
 				[
@@ -265,7 +264,6 @@ return [
 				[
 					'url' => 'admin_logger.php?page=log',
 					'label' => lng('menue.logger.logger'),
-					'required_resources' => 'change_serversettings',
 					'show_element' => (Settings::Get('logger.enabled') == true)
 				],
 				[
@@ -350,13 +348,13 @@ return [
 			'icon' => 'fa-solid fa-circle-info',
 			'elements' => [
 				[
-					'url' => 'https://docs.froxlor.org/v2/admin-guide/',
+					'url' => \Froxlor\Froxlor::getDocsUrl() . 'admin-guide/',
 					'label' => lng('admin.adminguide'),
 					'new_window' => true,
 					'is_external' => true,
 				],
 				[
-					'url' => 'https://docs.froxlor.org/v2/api-guide/',
+					'url' => \Froxlor\Froxlor::getDocsUrl() . 'api-guide/',
 					'label' => lng('admin.apiguide'),
 					'new_window' => true,
 					'show_element' => Settings::Get('api.enabled') == 1,

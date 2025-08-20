@@ -26,10 +26,10 @@
 namespace Froxlor;
 
 use Exception;
-use PDO;
-use RecursiveCallbackFilterIterator;
 use Froxlor\Customer\Customer;
 use Froxlor\Database\Database;
+use PDO;
+use RecursiveCallbackFilterIterator;
 
 class FileDir
 {
@@ -51,11 +51,12 @@ class FileDir
 	public static function mkDirWithCorrectOwnership(
 		string $homeDir,
 		string $dirToCreate,
-		int $uid,
-		int $gid,
-		bool $placeindex = false,
-		bool $allow_notwithinhomedir = false
-	): bool {
+		int    $uid,
+		int    $gid,
+		bool   $placeindex = false,
+		bool   $allow_notwithinhomedir = false
+	): bool
+	{
 		if ($homeDir != '' && $dirToCreate != '') {
 			$homeDir = self::makeCorrectDir($homeDir);
 			$dirToCreate = self::makeCorrectDir($dirToCreate);
@@ -107,15 +108,16 @@ class FileDir
 	}
 
 	/**
-	 * Function which returns a correct dirname, means to add slashes at the beginning and at the end if there weren't
-	 * some
+	 * Returns a correct/secure dirname, means to add slashes at the beginning and at the end if there weren't
+	 * some. If $fixes_homedir is specified,
+	 *
 	 *
 	 * @param string $dir the path to correct
 	 *
 	 * @return string the corrected path
 	 * @throws Exception
 	 */
-	public static function makeCorrectDir(string $dir): string
+	public static function makeCorrectDir(string $dir, string $fixed_homedir = ""): string
 	{
 		if (strlen($dir) > 0) {
 			$dir = trim($dir);
@@ -125,6 +127,36 @@ class FileDir
 			if (substr($dir, 0, 1) != '/') {
 				$dir = '/' . $dir;
 			}
+
+			// if given, check that the target path is within the $fixed_homedir
+			// by checking each folder for being a symlink and whether it targets
+			// the customers homedir or points outside of it
+			if (!empty($fixed_homedir)) {
+				$to_check = explode("/", substr($dir, strlen($fixed_homedir) + 1), -1);
+				$check_dir = substr($fixed_homedir, 0, -1);
+				// Symlink check
+				foreach ($to_check as $sub_dir) {
+					$check_dir .= '/' . $sub_dir;
+					if (is_link($check_dir)) {
+						$original_target = $check_dir;
+						$check_dir = readlink($check_dir);
+						$link_dir = dirname($original_target);
+						// check whether the link is relative or absolute
+						if (substr($check_dir, 0, 1) != '/') {
+							// relative directory, prepend link_dir
+							$check_dir = $link_dir . '/' . $check_dir;
+						}
+						if (substr($check_dir, 0, strlen($fixed_homedir)) != $fixed_homedir) {
+							throw new Exception("Found symlink pointing outside of customer home directory: " . substr($original_target, strlen($fixed_homedir)));
+						}
+					}
+				}
+				// check for the path to be within the given homedir
+				if (substr($dir, 0, strlen($fixed_homedir)) != $fixed_homedir) {
+					throw new Exception("Target path not within the required customer home directory");
+				}
+			}
+
 			return self::makeSecurePath($dir);
 		}
 		throw new Exception("Cannot validate directory in " . __FUNCTION__ . " which is very dangerous.");
@@ -219,7 +251,7 @@ class FileDir
 		}
 
 		// execute the command and return output
-		$return = '';
+		$return = [];
 
 		// -------------------------------------------------------------------------------
 		if ($return_value == false) {
@@ -229,6 +261,41 @@ class FileDir
 		}
 
 		return $return;
+	}
+
+	/**
+	 * Read unconfigured-domain template from database if exists or fallback to default
+	 *
+	 * @param string $servername
+	 *
+	 * @return string
+	 * @throws Exception
+	 */
+	public static function getUnknownDomainTemplate(string $servername = "")
+	{
+		$result_stmt = Database::prepare("
+			SELECT * FROM `" . TABLE_PANEL_TEMPLATES . "` WHERE `templategroup` = 'files' AND `varname` = 'unconfigured_html'
+		");
+		Database::pexecute($result_stmt);
+		if (Database::num_rows() > 0) {
+			$template = $result_stmt->fetch(PDO::FETCH_ASSOC);
+			$replace_arr = [
+				'SERVERNAME' => $servername,
+			];
+			$tpl_content = PhpHelper::replaceVariables($template['value'], $replace_arr);
+			$tpl_ext = $template['file_extension'];
+		} else {
+			$tpl_ext = 'html';
+			$unconfiguredPath = FileDir::makeCorrectFile(Froxlor::getInstallDir() . '/templates/misc/unconfigured/index.html');
+			if (file_exists($unconfiguredPath)) {
+				$tpl_content = file_get_contents($unconfiguredPath);
+			} else {
+				$tpl_content = lng('admin.templates.unconfigured_content_fallback');
+			}
+		}
+		$redirect_file = FileDir::makeCorrectFile(Froxlor::getInstallDir() . '/notice.' . $tpl_ext);
+		file_put_contents($redirect_file, $tpl_content);
+		return basename($redirect_file);
 	}
 
 	/**
@@ -245,12 +312,13 @@ class FileDir
 	public static function storeDefaultIndex(
 		string $loginname,
 		string $destination,
-		$logger = null,
-		bool $force = false
-	) {
+			   $logger = null,
+		bool   $force = false
+	)
+	{
 		if ($force || (int)Settings::Get('system.store_index_file_subs') == 1) {
 			$result_stmt = Database::prepare("
-			SELECT `t`.`value`, `c`.`email` AS `customer_email`, `a`.`email` AS `admin_email`, `c`.`loginname` AS `customer_login`, `a`.`loginname` AS `admin_login`
+			SELECT `t`.`value`, `t`.`file_extension`, `c`.`email` AS `customer_email`, `a`.`email` AS `admin_email`, `c`.`loginname` AS `customer_login`, `a`.`loginname` AS `admin_login`
 			FROM `" . TABLE_PANEL_CUSTOMERS . "` AS `c` INNER JOIN `" . TABLE_PANEL_ADMINS . "` AS `a`
 			ON `c`.`adminid` = `a`.`adminid`
 			INNER JOIN `" . TABLE_PANEL_TEMPLATES . "` AS `t`
@@ -273,7 +341,7 @@ class FileDir
 
 				// replaceVariables
 				$htmlcontent = PhpHelper::replaceVariables($template['value'], $replace_arr);
-				$indexhtmlpath = self::makeCorrectFile($destination . '/index.' . Settings::Get('system.index_file_extension'));
+				$indexhtmlpath = self::makeCorrectFile($destination . '/index.' . $template['file_extension']);
 				$index_html_handler = fopen($indexhtmlpath, 'w');
 				fwrite($index_html_handler, $htmlcontent);
 				fclose($index_html_handler);
@@ -281,7 +349,7 @@ class FileDir
 					$logger->logAction(
 						FroxlorLogger::CRON_ACTION,
 						LOG_NOTICE,
-						'Creating \'index.' . Settings::Get('system.index_file_extension') . '\' for Customer \'' . $template['customer_login'] . '\' based on template in directory ' . escapeshellarg($indexhtmlpath)
+						'Creating \'index.' . $template['file_extension'] . '\' for Customer \'' . $template['customer_login'] . '\' based on template in directory ' . escapeshellarg($indexhtmlpath)
 					);
 				}
 			} else {

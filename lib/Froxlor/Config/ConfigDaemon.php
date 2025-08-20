@@ -91,6 +91,9 @@ class ConfigDaemon
 		$this->fullxml = $xml;
 		$this->xpath = $xpath;
 		$this->daemon = $this->fullxml->xpath($this->xpath);
+		if (count($this->daemon) !== 1) {
+			throw new Exception('XPath "' . $this->xpath . '" didn\'t return exactly one element');
+		}
 		$attributes = $this->daemon[0]->attributes();
 		if ($attributes['title'] != '') {
 			$this->title = $this->parseContent((string)$attributes['title']);
@@ -409,7 +412,7 @@ class ConfigDaemon
 			}
 			$return[] = [
 				'type' => 'command',
-				'content' => $cmd . ' "' . $this->parseContent($attributes['name']) . '" "' . $this->parseContent($attributes['name']) . '.frx.bak"',
+				'content' => '[ -f ' . $this->parseContent($attributes['name']) . ' ] && ' . $cmd . ' "' . $this->parseContent($attributes['name']) . '" "' . $this->parseContent($attributes['name']) . '.frx.bak"',
 				'execute' => "pre"
 			];
 		}

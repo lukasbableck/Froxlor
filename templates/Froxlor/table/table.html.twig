@@ -10,7 +10,7 @@
 		</div>
 	{% else %}
 		<div class="d-flex flex-column align-items-end mt-n2">
-			<div class="rounded-top bg-dark small py-1 px-2 me-3 opacity-25 text-white">
+			<div class="rounded-top bg-secondary small py-1 px-2 me-3 opacity-25 text-white">
 				{% if listing.no_search is not defined or (listing.no_search is defined and listing.no_search == false) %}
 					{% if gSearchText is not empty %}
 						<span class="me-2"><a href="{{ linker(listing.self_overview) }}"><i class="fa-solid fa-xmark"></i></a> Filter: <strong>{{ gSearchText }}</strong></span>
@@ -47,6 +47,8 @@
 											{{ macros.domainWithSan(td.data.data) }}
 										{% elseif td.data.macro == 'actions' %}
 											{{ macros.actions(td.data.data) }}
+										{% elseif td.data.macro == 'type2fa' %}
+											{{ macros.type2fa(td.data.data) }}
 										{% else %}
 											Table macro '{{ td.data.macro|json_encode }}' is not implemented!
 											Unable to handle this data: {{ td.data|json_encode }}
@@ -64,6 +66,14 @@
 				{{ pagination.paging(listing.pagination) }}
 			{% endif %}
 		</div>
+		{# handle potential modal-html if defined by actions #}
+		{% for tr in listing.table.tr %}
+			{% for td in tr.td %}
+				{% if td.data is iterable and td.data.macro == 'actions' %}
+					{{ macros.actions_modal(td.data.data) }}
+				{% endif %}
+			{% endfor %}
+		{% endfor %}
 	{% endif %}
 
 	<!-- Modal -->
@@ -111,7 +121,7 @@
 						<select class="form-select" name="searchfield" id="searchfield">
 						{% for key, column in listing.available_columns %}
 							{% if column.searchable is not defined or (column.searchable is defined and column.searchable == true) %}
-							<option value="{{ key }}">{{ column.label }}</option>
+							<option value="{{ key }}" {% if column.isdefaultsearchfield is defined and column.isdefaultsearchfield == true %}selected{% endif %}>{{ column.label }}</option>
 							{% endif %}
 						{% endfor %}
 						</select>

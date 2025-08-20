@@ -46,7 +46,8 @@ return [
 						'label' => lng('admin.phpsettings.binary'),
 						'type' => 'text',
 						'maxlength' => 255,
-						'value' => '/usr/bin/php-cgi'
+						'value' => '/usr/bin/php-cgi',
+						'required_otp' => true
 					],
 					'fpmconfig' => [
 						'visible' => Settings::Get('phpfpm.enabled') == 1,
@@ -61,7 +62,8 @@ return [
 						'desc' => lng('admin.phpsettings.file_extensions_note'),
 						'type' => 'text',
 						'maxlength' => 255,
-						'value' => 'php'
+						'value' => 'php',
+						'required_otp' => true
 					],
 					'mod_fcgid_starter' => [
 						'visible' => Settings::Get('system.mod_fcgid') == 1,
@@ -101,7 +103,7 @@ return [
 						'maxlength' => 10,
 						'value' => '5s'
 					],
-					'phpfpm_pass_authorizationheader' => [
+					'pass_authorizationheader' => [
 						'visible' => Settings::Get('system.webserver') == "apache2",
 						'label' => lng('admin.phpsettings.pass_authorizationheader'),
 						'type' => 'checkbox',
@@ -181,7 +183,8 @@ return [
 						'cols' => 80,
 						'rows' => 20,
 						'value' => $result['phpsettings'],
-						'mandatory' => true
+						'mandatory' => true,
+						'required_otp' => true
 					],
 					'allow_all_customers' => [
 						'label' => lng('serversettings.phpfpm_settings.allow_all_customers.title'),

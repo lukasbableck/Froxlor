@@ -25,6 +25,7 @@
 
 namespace Froxlor\Cli;
 
+use Exception;
 use Froxlor\Config\ConfigParser;
 use Froxlor\Database\Database;
 use Froxlor\FileDir;
@@ -40,14 +41,13 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 
 final class ConfigServices extends CliCommand
 {
-
 	private $yes_to_all_supported = [
-		/* 'bookworm', */
-		'bionic',
+		'trixie',
+		'bookworm',
 		'bullseye',
-		'buster',
 		'focal',
 		'jammy',
+		'noble',
 	];
 
 	protected function configure()
@@ -62,11 +62,9 @@ final class ConfigServices extends CliCommand
 			->addOption('yes-to-all', 'A', InputOption::VALUE_NONE, 'Install packages without asking questions (Debian/Ubuntu only currently)');
 	}
 
-	protected function execute(InputInterface $input, OutputInterface $output)
+	protected function execute(InputInterface $input, OutputInterface $output): int
 	{
-		$result = self::SUCCESS;
-
-		$result = $this->validateRequirements($input, $output);
+		$result = $this->validateRequirements($output);
 
 		require Froxlor::getInstallDir() . '/lib/functions.php';
 
@@ -93,7 +91,7 @@ final class ConfigServices extends CliCommand
 		if ($result == self::SUCCESS) {
 			$io = new SymfonyStyle($input, $output);
 			if ($input->getOption('create')) {
-				$result = $this->createConfig($input, $output, $io);
+				$result = $this->createConfig($output, $io);
 			} elseif ($input->getOption('apply')) {
 				$result = $this->applyConfig($input, $output, $io);
 			} elseif ($input->getOption('list') || $input->getOption('daemon')) {
@@ -158,7 +156,10 @@ final class ConfigServices extends CliCommand
 		fclose($fp);
 	}
 
-	private function createConfig(InputInterface $input, OutputInterface $output, SymfonyStyle $io)
+	/**
+	 * @throws Exception
+	 */
+	private function createConfig(OutputInterface $output, SymfonyStyle $io): int
 	{
 		$_daemons_config = [
 			'distro' => ""
@@ -171,8 +172,8 @@ final class ConfigServices extends CliCommand
 		$distributions_select_data = [];
 
 		//set default os.
-		$os_dist = ['ID' => 'bullseye'];
-		$os_version = ['0' => '11'];
+		$os_dist = ['ID' => 'trixie'];
+		$os_version = ['0' => '13'];
 		$os_default = $os_dist['ID'];
 
 		//read os-release
@@ -217,6 +218,10 @@ final class ConfigServices extends CliCommand
 		$_daemons_config['distro'] = $io->choice('Choose distribution', $valid_dists, $os_default);
 
 		// go through all services and let user check whether to include it or not
+		if (empty($_daemons_config['distro']) || !file_exists($config_dir . '/' . $_daemons_config['distro']. ".xml")) {
+			$output->writeln('<error>Empty or non-existing distribution given.</>');
+			return self::INVALID;
+		}
 		$configfiles = new ConfigParser($config_dir . '/' . $_daemons_config['distro'] . ".xml");
 		$services = $configfiles->getServices();
 
@@ -285,7 +290,10 @@ final class ConfigServices extends CliCommand
 		return self::SUCCESS;
 	}
 
-	private function applyConfig(InputInterface $input, OutputInterface $output, SymfonyStyle $io)
+	/**
+	 * @throws Exception
+	 */
+	private function applyConfig(InputInterface $input, OutputInterface $output, SymfonyStyle $io): int
 	{
 		$applyFile = $input->getOption('apply');
 
@@ -349,8 +357,13 @@ final class ConfigServices extends CliCommand
 		}
 
 		if (!empty($decoded_config)) {
+
 			$config_dir = Froxlor::getInstallDir() . 'lib/configfiles/';
-			$configfiles = new ConfigParser($config_dir . '/' . $decoded_config['distro'] . ".xml");
+			if (empty($decoded_config['distro']) || !file_exists($config_dir . '/' . $decoded_config['distro']. ".xml")) {
+				$output->writeln('<error>Empty or non-existing distribution given. Please login with an admin, go to "System -> Configuration" and select your correct distribution in the top-right corner or specify valid distribution name for "distro" parameter.</>');
+				return self::INVALID;
+			}
+			$configfiles = new ConfigParser($config_dir . '/' . $decoded_config['distro']. ".xml");
 			$services = $configfiles->getServices();
 			$replace_arr = $this->getReplacerArray();
 
@@ -400,7 +413,7 @@ final class ConfigServices extends CliCommand
 							case "file":
 								if (array_key_exists('content', $action)) {
 									$output->writeln('<comment>Creating file "' . $action['name'] . '"</>');
-									file_put_contents($action['name'], trim(strtr($action['content'], $replace_arr)));
+									file_put_contents($action['name'], trim(strtr($action['content'], $replace_arr)) . PHP_EOL);
 								} elseif (array_key_exists('subcommands', $action)) {
 									foreach ($action['subcommands'] as $fileaction) {
 										if (array_key_exists('execute', $fileaction) && $fileaction['execute'] == "pre") {
@@ -409,7 +422,7 @@ final class ConfigServices extends CliCommand
 											exec(strtr($fileaction['content'], $replace_arr));
 										} elseif ($fileaction['type'] == 'file') {
 											$output->writeln('<comment>Creating file "' . $fileaction['name'] . '"</>');
-											file_put_contents($fileaction['name'], trim(strtr($fileaction['content'], $replace_arr)));
+											file_put_contents($fileaction['name'], trim(strtr($fileaction['content'], $replace_arr)) . PHP_EOL);
 										}
 									}
 								}
@@ -431,7 +444,10 @@ final class ConfigServices extends CliCommand
 		}
 	}
 
-	private function getReplacerArray()
+	/**
+	 * @throws Exception
+	 */
+	private function getReplacerArray(): array
 	{
 		$customer_tmpdir = '/tmp/';
 		if (Settings::Get('system.mod_fcgid') == '1' && Settings::Get('system.mod_fcgid_tmpdir') != '') {
@@ -440,7 +456,7 @@ final class ConfigServices extends CliCommand
 			$customer_tmpdir = Settings::Get('phpfpm.tmpdir');
 		}
 
-		// try to convert namserver hosts to ip's
+		// try to convert nameserver hosts to ip's
 		$ns_ips = "";
 		$known_ns_ips = [];
 		if (Settings::Get('system.nameservers') != '') {
@@ -486,12 +502,12 @@ final class ConfigServices extends CliCommand
 		Database::needSqlData();
 		$sql = Database::getSqlData();
 
-		$replace_arr = [
+		return [
 			'<SQL_UNPRIVILEGED_USER>' => $sql['user'],
 			'<SQL_UNPRIVILEGED_PASSWORD>' => $sql['passwd'],
 			'<SQL_DB>' => $sql['db'],
 			'<SQL_HOST>' => $sql['host'],
-			'<SQL_SOCKET>' => isset($sql['socket']) ? $sql['socket'] : null,
+			'<SQL_SOCKET>' => $sql['socket'] ?? null,
 			'<SERVERNAME>' => Settings::Get('system.hostname'),
 			'<SERVERIP>' => Settings::Get('system.ipaddress'),
 			'<NAMESERVERS>' => Settings::Get('system.nameservers'),
@@ -509,7 +525,7 @@ final class ConfigServices extends CliCommand
 			'<WEBSERVER_GROUP>' => Settings::Get('system.httpgroup'),
 			'<SSL_CERT_FILE>' => Settings::Get('system.ssl_cert_file'),
 			'<SSL_KEY_FILE>' => Settings::Get('system.ssl_key_file'),
+			'<ADMIN_MAIL>' => Settings::Get('panel.adminmail'),
 		];
-		return $replace_arr;
 	}
 }

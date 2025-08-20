@@ -41,6 +41,9 @@
 				{{ dashboard.ditem('customer.emails', userinfo.emails, userinfo.emails_used) }}
 				{{ dashboard.ditem('customer.accounts', userinfo.email_accounts, userinfo.email_accounts_used, null, false, userinfo.mailspace_used) }}
 				{{ dashboard.ditem('customer.forwarders', userinfo.email_forwarders, userinfo.email_forwarders_used) }}
+				{% if get_setting('system.mail_quota_enabled') and userinfo.email_quota != '0' %}
+					{{ dashboard.ditem('customer.email_quota', userinfo.email_quota_bytes, userinfo.email_quota_bytes_used, null, true) }}
+				{% endif %}
 				{{ dashboard.ditem('customer.ftps', userinfo.ftps, userinfo.ftps_used) }}
 			</div>
 		{% endif %}
@@ -48,15 +51,23 @@
 
 	<div class="row">
 		{% if userinfo.adminsession == 1 %}
-			<div
-				class="col-12 col-lg-6">
+			<div class="col-12 col-lg-6">
+
+				{% if userinfo.custom_notes|markdown is not empty and userinfo.custom_notes_show == 1 %}
+					<div class="card mb-3">
+						<div class="card-body">
+							{{ userinfo.custom_notes|markdown|raw }}
+						</div>
+					</div>
+				{% endif %}
+
 				{# system infos #}
 				<div class="card mb-3">
 					<div class="card-header">
 						<i class="fa-solid fa-gears me-1"></i>
 						{{ lng('admin.systemdetails') }}
 						<div class="float-end">
-							<button id="copySysInfo" class="btn btn-outline-dark" style="--bs-btn-padding-y: .25rem; --bs-btn-padding-x: .5rem; --bs-btn-font-size: .5rem;" title="Copy to clipboard"><i class="fa-solid fa-copy"></i></button>
+							<button id="copySysInfo" class="btn btn-outline-secondary copyClipboard" data-clipboard-source="ccSysInfo" style="--bs-btn-padding-y: .25rem; --bs-btn-padding-x: .5rem; --bs-btn-font-size: .5rem;" title="Copy to clipboard"><i class="fa-solid fa-copy"></i></button>
 						</div>
 						<div id="ccSysInfo" class="d-none">
 - Froxlor: {{ call_static('\\Froxlor\\Froxlor', 'getVersionString') }}
@@ -132,22 +143,9 @@
 						{% endif %}
 					</ul>
 				</div>
-
-				{% if userinfo.custom_notes is not empty and userinfo.custom_notes_show == 1 %}
-					<div class="card mb-3">
-						<ul class="list-group list-group-flush">
-							<li class="list-group-item list-group-item-info d-flex justify-content-between align-items-start">
-								<div class="ms-2 me-auto">
-									{{ userinfo.custom_notes|nl2br|raw }}
-								</div>
-							</li>
-						</ul>
-					</div>
-				{% endif %}
 			</div>
 		{% else %}
-			<div
-				class="col-12 col-md-6 col-lg-4">
+			<div class="col-12 col-md-6 col-lg-4">
 				{# account info #}
 				<div class="card mb-3">
 					<div class="card-header">
@@ -171,16 +169,16 @@
 							<div class="ms-2 me-auto">
 								<div class="fw-bold">{{ lng('customer.services') }}</div>
 								{% if userinfo.imap == 1 %}
-									<span class="badge bg-success">IMAP</span>
+									<span class="badge bg-success me-1">IMAP</span>
 								{% endif %}
 								{% if userinfo.pop3 == 1 %}
-									<span class="badge bg-success">POP3</span>
+									<span class="badge bg-success me-1">POP3</span>
 								{% endif %}
 								{% if userinfo.phpenabled == 1 %}
-									<span class="badge bg-success">PHP</span>
+									<span class="badge bg-success me-1">PHP</span>
 								{% endif %}
 								{% if userinfo.perlenabled == 1 %}
-									<span class="badge bg-success">Perl/CGI</span>
+									<span class="badge bg-success me-1">Perl/CGI</span>
 								{% endif %}
 								{% if userinfo.api_allowed == 1 %}
 									<a href="{{ linker({'section':'index','page':'apikeys'}) }}">
@@ -209,8 +207,7 @@
 					</ul>
 				</div>
 			</div>
-			<div
-				class="col-12 col-md-6 col-lg-4">
+			<div class="col-12 col-md-6 col-lg-4">
 				{# customer details #}
 				<div class="card">
 					<div class="card-header">
@@ -260,10 +257,10 @@
 								</div>
 							</li>
 						{% endif %}
-						{% if userinfo.custom_notes is not empty and userinfo.custom_notes_show == 1 %}
+						{% if userinfo.custom_notes|markdown is not empty and userinfo.custom_notes_show == 1 %}
 							<li class="list-group-item list-group-item-info d-flex justify-content-between align-items-start">
 								<div class="ms-2 me-auto">
-									{{ userinfo.custom_notes|nl2br|raw }}
+									{{ userinfo.custom_notes|markdown|raw }}
 								</div>
 							</li>
 						{% endif %}

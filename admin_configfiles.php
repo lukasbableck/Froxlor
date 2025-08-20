@@ -60,7 +60,9 @@ if ($userinfo['change_serversettings'] == '1') {
 
 	if (!empty($distribution)) {
 		if (!file_exists($config_dir . '/' . $distribution . ".xml")) {
-			Response::dynamicError("Unknown distribution");
+			// unknown distribution -> redirect to select a valid distribution for config-templates
+			Settings::Set('system.distribution', '');
+			Response::redirectTo('admin_configfiles.php', ['reselect' => 1]);
 		}
 
 		// update setting if different
@@ -91,14 +93,14 @@ if ($userinfo['change_serversettings'] == '1') {
 		asort($distributions_select);
 	}
 
-	if ($distribution != "" && isset($_POST['finish'])) {
-		$valid_keys = ['http', 'dns', 'smtp', 'mail', 'ftp', 'system', 'distro'];
+	if ($distribution != "" && !empty(Request::post('finish'))) {
+		$valid_keys = ['http', 'dns', 'smtp', 'mail', 'antispam', 'ftp', 'system', 'distro'];
 		unset($_POST['finish']);
 		unset($_POST['csrf_token']);
-		$params = $_POST;
+		$params = Request::postAll();
 		$params['distro'] = $distribution;
 		$params['system'] = [];
-		foreach ($_POST['system'] as $sysdaemon) {
+		foreach (Request::post('system', []) as $sysdaemon) {
 			$params['system'][] = $sysdaemon;
 		}
 		// validate params

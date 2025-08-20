@@ -10,6 +10,7 @@ Developed by experienced server administrators, this panel simplifies the effort
 ## Installation
 
 ### Fast install
+
 1. Ensure that your webserver serves /var/www/html
 2. Extract froxlor into /var/www/html
 3. Point your browser to http://[ip-of-webserver]/froxlor
@@ -24,6 +25,7 @@ If you have chosen to do the configuration by hand during the installation, you 
 3. Follow the steps for your services
 
 ### Detailed installation
+
 https://docs.froxlor.org/latest/general/installation/
 
 ## Help
@@ -34,19 +36,13 @@ You may find help in the following places:
 
 The froxlor community discord server can be found here: https://discord.froxlor.org
 
-### IRC
-
-froxlor may be found on libera.chat, channel #froxlor:
-irc://irc.libera.chat/froxlor
-
 ### Forum
 
 The community is located on https://forum.froxlor.org/
 
-### Wiki
+### Documentation
 
-More documentation may be found in the froxlor - documentation:
-https://docs.froxlor.org/
+The documentation may be found at https://docs.froxlor.org/
 
 ## License
 
@@ -55,6 +51,7 @@ May be found in [COPYING](COPYING)
 ## Downloads
 
 ### Tarball
+
 https://files.froxlor.org/releases/froxlor-latest.tar.gz [MD5](https://files.froxlor.org/releases/froxlor-latest.tar.gz.md5) [SHA1](https://files.froxlor.org/releases/froxlor-latest.tar.gz.sha1)
 
 ### Debian / Ubuntu repository
@@ -64,17 +61,17 @@ https://files.froxlor.org/releases/froxlor-latest.tar.gz [MD5](https://files.fro
 #### Debian
 
 ```
-apt-get -y install apt-transport-https lsb-release ca-certificates curl
+apt -y install apt-transport-https lsb-release ca-certificates curl gnupg
 curl -sSLo /usr/share/keyrings/deb.froxlor.org-froxlor.gpg https://deb.froxlor.org/froxlor.gpg
-echo sh -c '"deb [signed-by=/usr/share/keyrings/deb.froxlor.org-froxlor.gpg] https://deb.froxlor.org/debian $(lsb_release -sc) main" > /etc/apt/sources.list.d/froxlor.list'
+sh -c 'echo "deb [signed-by=/usr/share/keyrings/deb.froxlor.org-froxlor.gpg] https://deb.froxlor.org/debian $(lsb_release -sc) main" > /etc/apt/sources.list.d/froxlor.list'
 ```
 
 #### Ubuntu
 
 ```
-apt-get -y install apt-transport-https lsb-release ca-certificates curl
+apt -y install apt-transport-https lsb-release ca-certificates curl gnupg
 curl -sSLo /usr/share/keyrings/deb.froxlor.org-froxlor.gpg https://deb.froxlor.org/froxlor.gpg
-echo sh -c '"deb [signed-by=/usr/share/keyrings/deb.froxlor.org-froxlor.gpg] https://deb.froxlor.org/ubuntu $(lsb_release -sc) main" > /etc/apt/sources.list.d/froxlor.list'
+sh -c 'echo "deb [signed-by=/usr/share/keyrings/deb.froxlor.org-froxlor.gpg] https://deb.froxlor.org/ubuntu $(lsb_release -sc) main" > /etc/apt/sources.list.d/froxlor.list'
 ```
 
 ## Contributing

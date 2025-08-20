@@ -115,7 +115,7 @@ class Core
 		// create entries
 		$this->doDataEntries($pdo);
 		// create JSON array for config-services
-		$this->createJsonArray();
+		$this->createJsonArray($pdo);
 		if ($create_ud_str) {
 			$this->createUserdataParamStr();
 		}
@@ -176,15 +176,19 @@ class Core
 			$filename = "/tmp/froxlor_backup_" . date('YmdHi') . ".sql";
 
 			// look for mysqldump
+			$section = 'mysqldump';
 			if (file_exists("/usr/bin/mysqldump")) {
 				$mysql_dump = '/usr/bin/mysqldump';
 			} elseif (file_exists("/usr/local/bin/mysqldump")) {
 				$mysql_dump = '/usr/local/bin/mysqldump';
+			} elseif (file_exists("/usr/bin/mariadb-dump")) {
+				$mysql_dump = '/usr/bin/mariadb-dump';
+				$section = 'mariadb-dump';
 			}
 
 			// create temporary .cnf file
 			$cnffilename = "/tmp/froxlor_dump.cnf";
-			$dumpcnf = "[mysqldump]" . PHP_EOL . "password=\"" . $this->validatedData['mysql_root_pass'] . "\"" . PHP_EOL;
+			$dumpcnf = "[".$section."]" . PHP_EOL . "password=\"" . $this->validatedData['mysql_root_pass'] . "\"" . PHP_EOL;
 			file_put_contents($cnffilename, $dumpcnf);
 
 			// make the backup
@@ -195,7 +199,7 @@ class Core
 				@unlink($cnffilename);
 				if (stristr(implode(" ", $output), "error")) {
 					throw new Exception(lng('install.errors.mysqldump_backup_failed'));
-				} else if (!file_exists($filename)) {
+				} elseif (!file_exists($filename)) {
 					throw new Exception(lng('install.errors.sql_backup_file_missing'));
 				}
 			} else {
@@ -301,23 +305,10 @@ class Core
 				/* continue */
 			}
 		}
-		if (version_compare($db_root->getAttribute(PDO::ATTR_SERVER_VERSION), '10.0.0', '>=')) {
-			// mariadb compatibility
+		if (version_compare($db_root->getAttribute(PDO::ATTR_SERVER_VERSION), '8.0.11', '>=')) {
+			// mariadb & mysql8
 			// create user
 			$stmt = $db_root->prepare("CREATE USER '" . $username . "'@'" . $access_host . "' IDENTIFIED BY :password");
-			$stmt->execute([
-				"password" => $password
-			]);
-			// grant privileges
-			$stmt = $db_root->prepare("GRANT ALL ON `" . $database . "`.* TO :username@:host");
-			$stmt->execute([
-				"username" => $username,
-				"host" => $access_host
-			]);
-		} elseif (version_compare($db_root->getAttribute(PDO::ATTR_SERVER_VERSION), '8.0.11', '>=')) {
-			// mysql8 compatibility
-			// create user
-			$stmt = $db_root->prepare("CREATE USER '" . $username . "'@'" . $access_host . "' IDENTIFIED WITH mysql_native_password BY :password");
 			$stmt->execute([
 				"password" => $password
 			]);
@@ -378,14 +369,21 @@ class Core
 
 		$mainip = !empty($this->validatedData['serveripv6']) ? $this->validatedData['serveripv6'] : $this->validatedData['serveripv4'];
 
-		$this->updateSetting($upd_stmt, 'admin@' . $this->validatedData['servername'], 'panel', 'adminmail');
+		if ($this->validatedData['use_admin_email_as_sender'] == '1') {
+			$adminmail_value = $this->validatedData['admin_email'];
+		} elseif ($this->validatedData['use_admin_email_as_sender'] == '0' && !empty($this->validatedData['sender_email'])) {
+			$adminmail_value = $this->validatedData['sender_email'];
+		} else {
+			$adminmail_value = 'admin@' . $this->validatedData['servername'];
+		}
+		$this->updateSetting($upd_stmt, $adminmail_value, 'panel', 'adminmail');
 		$this->updateSetting($upd_stmt, $mainip, 'system', 'ipaddress');
 		if ($this->validatedData['use_ssl']) {
 			$this->updateSetting($upd_stmt, 1, 'system', 'use_ssl');
 			$this->updateSetting($upd_stmt, 1, 'system', 'leenabled');
 			$this->updateSetting($upd_stmt, 1, 'system', 'le_froxlor_enabled');
 		}
-		$this->updateSetting($upd_stmt, $this->validatedData['servername'], 'system', 'hostname');
+		$this->updateSetting($upd_stmt, strtolower($this->validatedData['servername']), 'system', 'hostname');
 		$this->updateSetting($upd_stmt, 'en', 'panel', 'standardlanguage'); // TODO: set language
 		$this->updateSetting($upd_stmt, $this->validatedData['mysql_access_host'], 'system', 'mysql_access_host');
 		$this->updateSetting($upd_stmt, $this->validatedData['webserver'], 'system', 'webserver');
@@ -421,6 +419,7 @@ class Core
 
 		$this->updateSetting($upd_stmt, $this->validatedData['activate_newsfeed'], 'admin', 'show_news_feed');
 		$this->updateSetting($upd_stmt, dirname(__FILE__, 5), 'system', 'letsencryptchallengepath');
+		$this->updateSetting($upd_stmt, dirname(__FILE__, 5) . '/templates/misc/deactivated/', 'system', 'deactivateddocroot');
 
 		// insert the lastcronrun to be the installation date
 		$this->updateSetting($upd_stmt, time(), 'system', 'lastcronrun');
@@ -436,23 +435,14 @@ class Core
 
 		// check currently used php version and set values of fpm/fcgid accordingly
 		if (defined('PHP_MAJOR_VERSION') && defined('PHP_MINOR_VERSION')) {
-			// gentoo specific
-			if ($this->validatedData['distribution'] == 'gentoo') {
-				// php-fpm
-				$reload = "/etc/init.d/php-fpm restart";
-				$config_dir = "/etc/php/fpm-php" . PHP_MAJOR_VERSION . "." . PHP_MINOR_VERSION . "/fpm.d/";
-				// fcgid
-				$binary = "/usr/bin/php-cgi";
+			// php-fpm
+			$reload = "service php" . PHP_MAJOR_VERSION . "." . PHP_MINOR_VERSION . "-fpm restart";
+			$config_dir = "/etc/php/" . PHP_MAJOR_VERSION . "." . PHP_MINOR_VERSION . "/fpm/pool.d/";
+			// fcgid
+			if ($this->validatedData['distribution'] == 'bookworm' || $this->validatedData['distribution'] == 'trixie') {
+				$binary = "/usr/bin/php-cgi" . PHP_MAJOR_VERSION . "." . PHP_MINOR_VERSION;
 			} else {
-				// php-fpm
-				$reload = "service php" . PHP_MAJOR_VERSION . "." . PHP_MINOR_VERSION . "-fpm restart";
-				$config_dir = "/etc/php/" . PHP_MAJOR_VERSION . "." . PHP_MINOR_VERSION . "/fpm/pool.d/";
-				// fcgid
-				if ($this->validatedData['distribution'] == 'bookworm') {
-					$binary = "/usr/bin/php-cgi" . PHP_MAJOR_VERSION . "." . PHP_MINOR_VERSION;
-				} else {
-					$binary = "/usr/bin/php" . PHP_MAJOR_VERSION . "." . PHP_MINOR_VERSION . "-cgi";
-				}
+				$binary = "/usr/bin/php" . PHP_MAJOR_VERSION . "." . PHP_MINOR_VERSION . "-cgi";
 			}
 			$db_user->query("UPDATE `" . TABLE_PANEL_FPMDAEMONS . "` SET `reload_cmd` = '" . $reload . "', `config_dir` = '" . $config_dir . "' WHERE `id` ='1';");
 			$db_user->query("UPDATE `" . TABLE_PANEL_PHPCONFIGS . "` SET `binary` = '" . $binary . "';");
@@ -575,7 +565,7 @@ class Core
 			'password' => password_hash($this->validatedData['admin_pass'], PASSWORD_DEFAULT),
 			'adminname' => $this->validatedData['admin_name'],
 			'email' => $this->validatedData['admin_email'],
-			'deflang' => 'en' // TODO: set lanuage
+			'deflang' => 'en' // TODO: set language
 		];
 		$ins_stmt = $db_user->prepare("
 			INSERT INTO `" . TABLE_PANEL_ADMINS . "` SET
@@ -665,9 +655,20 @@ class Core
 		@umask($umask);
 	}
 
-	private function createJsonArray()
+	private function createJsonArray(&$db_user)
 	{
-		$system_params = ["cron", "libnssextrausers", "logrotate", "goaccess"];
+		// use traffic analyzer and ftpserver from settings as we could define defaults in the lib/configfiles/*.xml templates
+		// which can be useful for third-party package-maintainer (e.g. other distros) to have more control
+		// over the installation defaults (less hardcoded values)
+		$custom_dependency = $db_user->query("
+			SELECT `varname`, `value` FROM `" . TABLE_PANEL_SETTINGS . "`
+			WHERE `settinggroup` = 'system' AND (`varname` = 'traffictool' OR `varname` = 'ftpserver')
+		");
+		$cd_result = $custom_dependency->fetchAll(\PDO::FETCH_KEY_PAIR);
+		$system_params = ["cron", "libnssextrausers", "logrotate"];
+		if (isset($cd_result['traffictool'])) {
+			$system_params[] = $cd_result['traffictool'];
+		}
 		if ($this->validatedData['webserver_backend'] == 'php-fpm') {
 			$system_params[] = 'php-fpm';
 		} elseif ($this->validatedData['webserver_backend'] == 'fcgid') {
@@ -679,7 +680,8 @@ class Core
 			'http' => $this->validatedData['webserver'],
 			'smtp' => 'postfix_dovecot',
 			'mail' => 'dovecot_postfix2',
-			'ftp' => 'proftpd',
+			'antispam' => 'rspamd',
+			'ftp' => $cd_result['ftpserver'] ?? 'x',
 			'system' => $system_params
 		];
 		$_SESSION['installation']['json_params'] = json_encode($json_params);

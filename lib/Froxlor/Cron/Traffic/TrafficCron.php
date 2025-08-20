@@ -30,6 +30,7 @@ namespace Froxlor\Cron\Traffic;
  * @author        Froxlor team <team@froxlor.org> (2010-)
  */
 
+use Froxlor\Cron\Forkable;
 use Froxlor\Cron\FroxlorCron;
 use Froxlor\Database\Database;
 use Froxlor\FileDir;
@@ -42,51 +43,15 @@ use PDO;
 
 class TrafficCron extends FroxlorCron
 {
+	use Forkable;
 
 	public static function run()
 	{
-		// Check Traffic-Lock
-		if (function_exists('pcntl_fork') && !defined('CRON_NOFORK_FLAG')) {
-			$TrafficLock = FileDir::makeCorrectFile("/var/run/froxlor_cron_traffic.lock");
-			if (file_exists($TrafficLock) && is_numeric($TrafficPid = file_get_contents($TrafficLock))) {
-				if (function_exists('posix_kill')) {
-					$TrafficPidStatus = @posix_kill($TrafficPid, 0);
-				} else {
-					system("kill -CHLD " . $TrafficPid . " 1> /dev/null 2> /dev/null", $TrafficPidStatus);
-					$TrafficPidStatus = !$TrafficPidStatus;
-				}
-				if ($TrafficPidStatus) {
-					FroxlorLogger::getInstanceOf()->logAction(FroxlorLogger::CRON_ACTION, LOG_INFO, 'Traffic Run already in progress');
-					return 1;
-				}
-			}
-			// Create Traffic Log and Fork
-			// We close the database - connection before we fork, so we don't share resources with the child
-			Database::needRoot(false); // this forces the connection to be set to null
-			$TrafficPid = pcntl_fork();
-			// Parent
-			if ($TrafficPid) {
-				file_put_contents($TrafficLock, $TrafficPid);
-				// unnecessary to recreate database connection here
-				return 0;
-			} elseif ($TrafficPid == 0) {
-				// Child
-				posix_setsid();
-				// re-create db
-				Database::needRoot(false);
-			} else {
-				// Fork failed
-				return 1;
-			}
-		} elseif (!defined('CRON_NOFORK_FLAG')) {
-			if (extension_loaded('pcntl')) {
-				$msg = "PHP compiled with pcntl but pcntl_fork function is not available.";
-			} else {
-				$msg = "PHP compiled without pcntl.";
-			}
-			FroxlorLogger::getInstanceOf()->logAction(FroxlorLogger::CRON_ACTION, LOG_INFO, $msg . " Not forking traffic-cron, this may take a long time!");
-		}
+		self::runFork([self::class, 'handle'], [true]);
+	}
 
+	public static function handle()
+	{
 		/**
 		 * TRAFFIC AND DISKUSAGE MEASURE
 		 */
@@ -157,7 +122,7 @@ class TrafficCron extends FroxlorCron
 				if ($mysql_usage_row) {
 					$mysqlusage_all[$row_database['customerid']] += floatval($mysql_usage_row['customerusage']);
 				} else {
-					FroxlorLogger::getInstanceOf()->logAction(FroxlorLogger::CRON_ACTION, LOG_WARNING, "Cannot get usage for database " . $row_database['databasename'] . ".");
+					FroxlorLogger::getInstanceOf()->logAction(FroxlorLogger::CRON_ACTION, LOG_NOTICE, "Cannot get usage for database " . $row_database['databasename'] . ".");
 				}
 			} else {
 				FroxlorLogger::getInstanceOf()->logAction(FroxlorLogger::CRON_ACTION, LOG_WARNING, "Seems like the database " . $row_database['databasename'] . " had been removed manually.");
@@ -198,14 +163,14 @@ class TrafficCron extends FroxlorCron
 
 			if (isset($domainlist[$row['customerid']]) && is_array($domainlist[$row['customerid']]) && count($domainlist[$row['customerid']]) != 0) {
 				// Examining which caption to use for default webalizer stats...
-				if ($row['standardsubdomain'] != '0') {
+				if ($row['standardsubdomain'] != '0' && isset($domainlist[$row['customerid']][$row['standardsubdomain']])) {
 					// ... of course we'd prefer to use the standardsubdomain ...
 					$caption = $domainlist[$row['customerid']][$row['standardsubdomain']];
 				} else {
 					// ... but if there is no standardsubdomain, we have to use the loginname ...
 					$caption = $row['loginname'];
 
-					// ... which results in non-usable links to files in the stats, so lets have a look if we find a domain which is not speciallogfiledomain
+					// ... which results in non-usable links to files in the stats, so let's have a look if we find a domain which is not speciallogfiledomain
 					foreach ($domainlist[$row['customerid']] as $domainid => $domain) {
 						if (!isset($speciallogfile_domainlist[$row['customerid']]) || !isset($speciallogfile_domainlist[$row['customerid']][$domainid])) {
 							$caption = $domain;
@@ -228,6 +193,8 @@ class TrafficCron extends FroxlorCron
 							} else {
 								$httptraffic += floatval(self::callWebalizerGetTraffic($row['loginname'] . '-' . $domain, $row['documentroot'] . '/webalizer/' . $domain . '/', $domain, $domainlist[$row['customerid']]));
 							}
+							// kind of a keep-alive-call as this unsets the link which leads to a new connection to the database
+							Database::needRoot();
 						}
 					}
 				}
@@ -245,6 +212,8 @@ class TrafficCron extends FroxlorCron
 				} else {
 					$httptraffic += floatval(self::callWebalizerGetTraffic($row['loginname'], $row['documentroot'] . '/webalizer/', $caption, $domainlist[$row['customerid']]));
 				}
+				// kind of a keep-alive-call as this unsets the link which leads to a new connection to the database
+				Database::needRoot();
 
 				// make the stuff readable for the customer, #258
 				Statistics::makeChownWithNewStats($row);
@@ -611,11 +580,6 @@ class TrafficCron extends FroxlorCron
 		}
 
 		Database::query("UPDATE `" . TABLE_PANEL_SETTINGS . "` SET `value` = UNIX_TIMESTAMP() WHERE `settinggroup` = 'system' AND `varname` = 'last_traffic_run'");
-
-		if (function_exists('pcntl_fork') && !defined('CRON_NOFORK_FLAG')) {
-			@unlink($TrafficLock);
-			die();
-		}
 	}
 
 	/**
@@ -658,7 +622,7 @@ class TrafficCron extends FroxlorCron
 			$format = Settings::Get('system.logfiles_type') == '2' ? 'VCOMBINED' : 'COMBINED';
 			$monthyear = $monthyear_arr['month'] . '/' . $monthyear_arr['year'];
 			$return_value = false;
-			FileDir::safe_exec("grep '" . $monthyear . "' " . escapeshellarg($logfile) . " | goaccess " . $keep_params . " --db-path=" . escapeshellarg($outputdir) . " -o " . escapeshellarg($outputdir . '.tmp.json') . " -o " . escapeshellarg($outputdir . 'index.html') . " --html-report-title=" . escapeshellarg($caption) . " --log-format=" . $format . " - ", $return_value, ['|']);
+			FileDir::safe_exec("grep '" . $monthyear . "' " . escapeshellarg($logfile) . " | goaccess " . $keep_params . " --db-path=" . escapeshellarg($outputdir) . " -o " . escapeshellarg($outputdir . '.tmp.json') . " -o " . escapeshellarg($outputdir . 'index.html') . " --html-report-title=" . escapeshellarg($caption) . " --log-format=" . $format . " --no-parsing-spinner --no-progress - ", $return_value, ['|']);
 
 			if (file_exists($outputdir . '.tmp.json')) {
 				// need jq here because of potentially LARGE json files
@@ -827,6 +791,8 @@ class TrafficCron extends FroxlorCron
 			// 'real' domains and no subdomains which are aliases in the
 			// model-config-file.
 			$returnval += self::awstatsDoSingleDomain($singledomain, $outputdir, $current_stamp);
+			// kind of a keep-alive-call as this unsets the link which leads to a new connection to the database
+			Database::needRoot();
 		}
 
 		/**

@@ -107,7 +107,8 @@ return [
 					'varname' => 'enabled',
 					'type' => 'checkbox',
 					'default' => false,
-					'save_method' => 'storeSettingField'
+					'save_method' => 'storeSettingField',
+					'required_otp' => true
 				],
 				'api_customer_default' => [
 					'label' => lng('serversettings.api_customer_default'),
@@ -129,7 +130,8 @@ return [
 					'default' => 'stable',
 					'select_var' => [
 						'stable' => lng('serversettings.uc_stable'),
-						'testing' => lng('serversettings.uc_testing')
+						'testing' => lng('serversettings.uc_testing'),
+						'nightly' => lng('serversettings.uc_nightly')
 					],
 					'save_method' => 'storeSettingField',
 					'advanced_mode' => true
@@ -170,16 +172,6 @@ return [
 					'default' => false,
 					'save_method' => 'storeSettingField'
 				],
-				'system_index_file_extension' => [
-					'label' => lng('serversettings.index_file_extension'),
-					'settinggroup' => 'system',
-					'varname' => 'index_file_extension',
-					'type' => 'text',
-					'string_regexp' => '/^[a-zA-Z0-9]{1,6}$/',
-					'default' => 'html',
-					'save_method' => 'storeSettingField',
-					'advanced_mode' => true
-				],
 				'system_store_index_file_subs' => [
 					'label' => lng('serversettings.system_store_index_file_subs'),
 					'settinggroup' => 'system',
@@ -187,18 +179,6 @@ return [
 					'type' => 'checkbox',
 					'default' => true,
 					'save_method' => 'storeSettingField'
-				],
-				'system_httpuser' => [
-					'settinggroup' => 'system',
-					'varname' => 'httpuser',
-					'type' => 'hidden',
-					'default' => 'www-data'
-				],
-				'system_httpgroup' => [
-					'settinggroup' => 'system',
-					'varname' => 'httpgroup',
-					'type' => 'hidden',
-					'default' => 'www-data'
 				],
 				'system_report_enable' => [
 					'label' => lng('serversettings.report.report'),
@@ -277,7 +257,8 @@ return [
 					'varname' => 'mail_smtp_user',
 					'type' => 'text',
 					'default' => '',
-					'save_method' => 'storeSettingField'
+					'save_method' => 'storeSettingField',
+					'autocomplete' => 'off'
 				],
 				'system_mail_smtp_passwd' => [
 					'label' => lng('serversettings.mail_smtp_passwd'),
@@ -285,7 +266,8 @@ return [
 					'varname' => 'mail_smtp_passwd',
 					'type' => 'password',
 					'default' => '',
-					'save_method' => 'storeSettingField'
+					'save_method' => 'storeSettingField',
+					'autocomplete' => 'new-password'
 				],
 				'system_apply_specialsettings_default' => [
 					'label' => lng('serversettings.apply_specialsettings_default'),

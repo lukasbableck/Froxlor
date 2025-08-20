@@ -2,19 +2,27 @@
 	"name": "froxlor",
 	"private": true,
 	"scripts": {
-		"dev": "mix watch",
-		"build": "mix --production"
+		"dev": "vite",
+		"build": "vite build"
 	},
 	"devDependencies": {
-		"@fortawesome/fontawesome-free": "^6.2.0",
-		"@popperjs/core": "^2.11.6",
-		"bootstrap": "^5.2.1",
-		"chart.js": "^3.9.1",
-		"jquery": "^3.6.1",
-		"jquery-validation": "^1.19.5",
-		"laravel-mix": "^6.0.42",
+		"@fortawesome/fontawesome-free": "^6.7.2",
+		"@popperjs/core": "^2.11.8",
+		"@vitejs/plugin-vue": "^5.2.1",
+		"axios": "^1.8.2",
+		"bootstrap": "^5.3.3",
+		"chart.js": "^4.4.8",
+		"jquery": "^3.7.1",
+		"jquery-validation": "^1.21.0",
+		"laravel-vite-plugin": "^1.2.0",
+		"lodash": "^4.17.21",
+		"postcss": "^8.5.3",
 		"resolve-url-loader": "^5.0.0",
-		"sass": "^1.49.7",
-		"sass-loader": "^12.5.0"
+		"sass": "^1.85.1",
+		"vite": "^6.3.4",
+		"vue": "^3.5.13"
+	},
+	"engines": {
+		"node": ">=22"
 	}
 }

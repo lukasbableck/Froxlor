@@ -28,6 +28,7 @@ namespace Froxlor\Validate;
 use Froxlor\Database\Database;
 use Froxlor\FileDir;
 use Froxlor\Settings;
+use Froxlor\UI\Request;
 
 class Check
 {
@@ -73,7 +74,7 @@ class Check
 		// interface is to be enabled
 		if ((int)$newfieldvalue == 1) {
 			// check for POST value of the other field == 1 (active)
-			if (isset($_POST[$check_array[$fieldname]['other_post_field']]) && (int)$_POST[$check_array[$fieldname]['other_post_field']] == 1) {
+			if ((int)Request::post($check_array[$fieldname]['other_post_field'], 0) == 1) {
 				// the other interface is activated already and STAYS activated
 				if ((int)Settings::Get($check_array[$fieldname]['other_enabled']) == 1) {
 					$returnvalue = [
@@ -83,8 +84,12 @@ class Check
 				} else {
 					// fcgid is being validated before fpm -> "ask" fpm about its state
 					if ($fieldname == 'system_mod_fcgid_enabled') {
-						$returnvalue = self::checkFcgidPhpFpm('system_phpfpm_enabled', null,
-							$check_array[$fieldname]['other_post_field'], null);
+						$returnvalue = self::checkFcgidPhpFpm(
+							'system_phpfpm_enabled',
+							null,
+							$check_array[$fieldname]['other_post_field'],
+							null
+						);
 					} else {
 						// not, bot are nogo
 						$returnvalue = $returnvalue = [
@@ -117,8 +122,16 @@ class Check
 		$mysql_access_host_array = array_unique(array_map('trim', explode(',', $newfieldvalue)));
 
 		foreach ($mysql_access_host_array as $host_entry) {
-			if (Validate::validate_ip2($host_entry, true, 'invalidip', true, true, true, true,
-					false) == false && Validate::validateDomain($host_entry) == false && Validate::validateLocalHostname($host_entry) == false && $host_entry != '%') {
+			if (Validate::validate_ip2(
+					$host_entry,
+					true,
+					'invalidip',
+					true,
+					true,
+					true,
+					true,
+					false
+				) == false && Validate::validateDomain($host_entry) == false && Validate::validateLocalHostname($host_entry) == false && $host_entry != '%') {
 				return [
 					self::FORMFIELDS_PLAUSIBILITY_CHECK_ERROR,
 					'invalidmysqlhost',
@@ -204,8 +217,11 @@ class Check
 			}
 
 			// neither dir can be within the other nor can they be equal
-			if (substr($newdir, 0, strlen($cdir)) == $cdir || substr($cdir, 0,
-					strlen($newdir)) == $newdir || $newdir == $cdir) {
+			if (substr($newdir, 0, strlen($cdir)) == $cdir || substr(
+					$cdir,
+					0,
+					strlen($newdir)
+				) == $newdir || $newdir == $cdir) {
 				$returnvalue = [
 					self::FORMFIELDS_PLAUSIBILITY_CHECK_ERROR,
 					'fcgidpathcannotbeincustomerdoc'
@@ -264,8 +280,11 @@ class Check
 		}
 
 		$returnvalue = [];
-		if (Validate::validateUsername($newfieldvalue, Settings::Get('panel.unix_names'),
-				Database::getSqlUsernameLength() - strlen($allnewfieldvalues['customer_mysqlprefix'])) === true) {
+		if (Validate::validateUsername(
+				$newfieldvalue,
+				Settings::Get('panel.unix_names'),
+				Database::getSqlUsernameLength() - strlen($allnewfieldvalues['customer_mysqlprefix'])
+			) === true) {
 			$returnvalue = [
 				self::FORMFIELDS_PLAUSIBILITY_CHECK_OK
 			];
@@ -311,6 +330,69 @@ class Check
 				self::FORMFIELDS_PLAUSIBILITY_CHECK_ERROR,
 				'local_group_exists'
 			];
+		}
+		return $returnvalue;
+	}
+
+	public static function checkPgpPublicKeySetting($fieldname, $fielddata, $newfieldvalue, $allnewfieldvalues)
+	{
+		// if the field is empty, we don't need to check anything
+		if ($newfieldvalue === '') {
+			return [self::FORMFIELDS_PLAUSIBILITY_CHECK_OK];
+		}
+
+		// check if gnupg extension is loaded
+		if (!extension_loaded('gnupg')) {
+			return [
+				self::FORMFIELDS_PLAUSIBILITY_CHECK_ERROR,
+				'gnupgextensionnotavailable'
+			];
+		}
+		// check if the pgp public key is a valid key
+		putenv('GNUPGHOME=' . sys_get_temp_dir());
+		if (gnupg_import(gnupg_init(), $newfieldvalue) === false) {
+			return [
+				self::FORMFIELDS_PLAUSIBILITY_CHECK_ERROR,
+				'invalidpgppublickey'
+			];
+		}
+
+		return [self::FORMFIELDS_PLAUSIBILITY_CHECK_OK];
+	}
+
+	/**
+	 * @param $fieldname
+	 * @param $fielddata
+	 * @param $newfieldvalue
+	 * @param $allnewfieldvalues
+	 * @return array|int[]
+	 * @throws \Exception
+	 */
+	public static function checkSystemUsername($fieldname, $fielddata, $newfieldvalue, $allnewfieldvalues)
+	{
+		if (empty($newfieldvalue) || $fielddata['value'] == $newfieldvalue) {
+			$returnvalue = [
+				self::FORMFIELDS_PLAUSIBILITY_CHECK_OK
+			];
+		} elseif (function_exists('posix_getpwnam') && posix_getpwnam($newfieldvalue) == false) {
+			$returnvalue = [
+				self::FORMFIELDS_PLAUSIBILITY_CHECK_ERROR,
+				'local_user_invalid'
+			];
+		} else {
+			// user exists, but cannot be one of the froxlor-customers
+			$sel_stmt = Database::prepare("SELECT COUNT(*) as numUsers FROM `" . TABLE_PANEL_CUSTOMERS . "` WHERE `loginname` = :username");
+			$result = Database::pexecute_first($sel_stmt, [':username' => $newfieldvalue]);
+			if ($result && $result['numUsers'] > 0) {
+				$returnvalue = [
+					self::FORMFIELDS_PLAUSIBILITY_CHECK_ERROR,
+					'local_user_isfroxloruser'
+				];
+			} else {
+				$returnvalue = [
+					self::FORMFIELDS_PLAUSIBILITY_CHECK_OK
+				];
+			}
 		}
 		return $returnvalue;
 	}

@@ -48,6 +48,7 @@ return [
 				'field' => 'loginname',
 				'callback' => [Impersonate::class, 'admin'],
 				'sortable' => true,
+				'isdefaultsearchfield' => true,
 			],
 			'name' => [
 				'label' => lng('customer.name'),
@@ -94,6 +95,11 @@ return [
 				'class' => 'text-center',
 				'callback' => [Text::class, 'boolean'],
 			],
+			'lastlogin_succ' => [
+				'label' => lng('admin.lastlogin_succ'),
+				'field' => 'lastlogin_succ',
+				'callback' => [Text::class, 'timestamp'],
+			],
 			'theme' => [
 				'label' => lng('panel.theme'),
 				'field' => 'theme',
@@ -103,6 +109,12 @@ return [
 				'field' => 'api_allowed',
 				'class' => 'text-center',
 				'callback' => [Text::class, 'boolean'],
+			],
+			'type_2fa' => [
+				'label' => lng('2fa.type_2fa'),
+				'field' => 'type_2fa',
+				'class' => 'text-center',
+				'callback' => [Text::class, 'type2fa'],
 			],
 		],
 		'visible_columns' => Listing::getVisibleColumnsForListing('admin_list', [

@@ -90,6 +90,8 @@ class SysLog extends ApiCommand implements ResourceEntity
 		}
 		Database::pexecute($result_stmt, $query_fields, true, true);
 		while ($row = $result_stmt->fetch(PDO::FETCH_ASSOC)) {
+			// clean log-text
+			$row['text'] = preg_replace("/[^\w @#\"':.,()\[\]+\-_\/\\\!]/i", "_", $row['text']);
 			$result[] = $row;
 		}
 		$this->logger()->logAction($this->isAdmin() ? FroxlorLogger::ADM_ACTION : FroxlorLogger::USR_ACTION, LOG_INFO, "[API] list log-entries");
@@ -223,7 +225,7 @@ class SysLog extends ApiCommand implements ResourceEntity
 			}
 			$params['trunc'] = $truncatedate;
 			Database::pexecute($result_stmt, $params, true, true);
-			$this->logger()->logAction($this->isAdmin() ? FroxlorLogger::ADM_ACTION : FroxlorLogger::USR_ACTION, LOG_WARNING, "[API] truncated the froxlor syslog");
+			$this->logger()->logAction(FroxlorLogger::ADM_ACTION, LOG_WARNING, "[API] truncated the froxlor syslog");
 			return $this->response(true);
 		}
 		throw new Exception("Not allowed to execute given command.", 403);

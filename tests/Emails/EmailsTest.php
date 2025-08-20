@@ -426,10 +426,10 @@ class MailsTest extends TestCase
 		$this->assertEquals(1, $result['popaccountid']);
 
 		switch (Settings::Get('system.passwordcryptfunc')) {
-			case PASSWORD_ARGON2I:
+			case 'argon2i':
 				$cpPrefix = '{ARGON2I}';
 				break;
-			case PASSWORD_ARGON2ID:
+			case 'argon2id':
 				$cpPrefix = '{ARGON2ID}';
 				break;
 			default:

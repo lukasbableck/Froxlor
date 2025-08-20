@@ -7,11 +7,11 @@
 		{% if fields._group is defined %}&nbsp;&raquo;&nbsp;{{ fields._group.title|raw }}
 		{% endif %}
 	</h5>
-	<span class="text-muted">{{ lng('admin.serversettings_desc') }}</span>
+	<span class="text-body-secondary">{{ lng('admin.serversettings_desc') }}</span>
 {% endblock %}
 
 {% block actions %}
-	<a class="btn btn-outline-secondary" href="{{ linker({'section':'settings','page':'toggleSettingsMode'}) }}" title="{{ lng('panel.settingsmodetoggle') }}">
+	<a class="btn btn-outline-secondary me-2" href="{{ linker({'section':'settings','page':'toggleSettingsMode'}) }}" title="{{ lng('panel.settingsmodetoggle') }}">
 		{% if get_setting('panel.settings_mode') == 0 %}
 		<i class="fa-solid fa-maximize me-1"></i>
 		{{ lng('panel.settingsmode') }}: {{ lng('panel.settingsmodebasic') }}
@@ -47,7 +47,7 @@
 							</div>
 							{% if not field.activated %}
 								<div class="position-absolute top-0 end-0 p-1">
-									<span class="badge text-muted" style="background: #eee">{{ lng('panel.not_activated') }}</span>
+									<span class="badge text-bg-light">{{ lng('panel.not_activated') }}</span>
 								</div>
 							{% endif %}
 						</div>

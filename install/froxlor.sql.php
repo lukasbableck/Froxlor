@@ -94,6 +94,11 @@ CREATE TABLE `mail_virtual` (
   `popaccountid` int(11) NOT NULL default '0',
   `iscatchall` tinyint(1) unsigned NOT NULL default '0',
   `description` varchar(255) NOT NULL DEFAULT '',
+  `spam_tag_level` float(4,1) NOT NULL DEFAULT 7.0,
+  `rewrite_subject` tinyint(1) NOT NULL default '1',
+  `spam_kill_level` float(4,1) NOT NULL DEFAULT 14.0,
+  `bypass_spam` tinyint(1) NOT NULL default '0',
+  `policy_greylist` tinyint(1) NOT NULL default '1',
   PRIMARY KEY  (`id`),
   KEY `email` (`email`)
 ) ENGINE=InnoDB CHARSET=utf8 COLLATE=utf8_general_ci;
@@ -155,9 +160,10 @@ CREATE TABLE `panel_admins` (
   `type_2fa` tinyint(1) NOT NULL default '0',
   `data_2fa` varchar(25) NOT NULL default '',
   `api_allowed` tinyint(1) NOT NULL default '1',
+  `gui_access` tinyint(1) NOT NULL default '1',
    PRIMARY KEY  (`adminid`),
    UNIQUE KEY `loginname` (`loginname`)
-) ENGINE=InnoDB CHARSET=utf8 COLLATE=utf8_general_ci;
+) ENGINE=InnoDB CHARSET=utf8 COLLATE=utf8_general_ci ROW_FORMAT=DYNAMIC;
 
 
 DROP TABLE IF EXISTS `panel_customers`;
@@ -223,6 +229,7 @@ CREATE TABLE `panel_customers` (
   `api_allowed` tinyint(1) NOT NULL default '1',
   `logviewenabled` tinyint(1) NOT NULL default '0',
   `allowed_mysqlserver` text NOT NULL,
+  `gui_access` tinyint(1) NOT NULL default '1',
    PRIMARY KEY  (`customerid`),
    UNIQUE KEY `loginname` (`loginname`)
 ) ENGINE=InnoDB CHARSET=utf8 COLLATE=utf8_general_ci ROW_FORMAT=DYNAMIC;
@@ -278,7 +285,6 @@ CREATE TABLE `panel_domains` (
   `phpsettingid` INT( 11 ) UNSIGNED NOT NULL DEFAULT '1',
   `mod_fcgid_starter` int(4) default '-1',
   `mod_fcgid_maxrequests` int(4) default '-1',
-  `ismainbutsubto` int(11) unsigned NOT NULL default '0',
   `letsencrypt` tinyint(1) NOT NULL default '0',
   `hsts` varchar(10) NOT NULL default '0',
   `hsts_sub` tinyint(1) NOT NULL default '0',
@@ -300,7 +306,7 @@ CREATE TABLE `panel_domains` (
   KEY `customerid` (`customerid`),
   KEY `parentdomain` (`parentdomainid`),
   KEY `domain` (`domain`)
-) ENGINE=InnoDB CHARSET=utf8 COLLATE=utf8_general_ci;
+) ENGINE=InnoDB CHARSET=utf8 COLLATE=utf8_general_ci ROW_FORMAT=DYNAMIC;
 
 
 DROP TABLE IF EXISTS `panel_ipsandports`;
@@ -357,23 +363,6 @@ CREATE TABLE `panel_htpasswds` (
 ) ENGINE=InnoDB CHARSET=utf8 COLLATE=utf8_general_ci;
 
 
-DROP TABLE IF EXISTS `panel_sessions`;
-CREATE TABLE `panel_sessions` (
-  `hash` varchar(32) NOT NULL default '',
-  `userid` int(11) unsigned NOT NULL default '0',
-  `ipaddress` varchar(255) NOT NULL default '',
-  `useragent` varchar(255) NOT NULL default '',
-  `lastactivity` int(11) unsigned NOT NULL default '0',
-  `lastpaging` varchar(255) NOT NULL default '',
-  `formtoken` char(32) NOT NULL default '',
-  `language` varchar(64) NOT NULL default '',
-  `adminsession` tinyint(1) unsigned NOT NULL default '0',
-  `theme` varchar(255) NOT NULL default '',
-  PRIMARY KEY  (`hash`),
-  KEY `userid` (`userid`)
-) ENGINE=HEAP;
-
-
 DROP TABLE IF EXISTS `panel_settings`;
 CREATE TABLE `panel_settings` (
   `settingid` int(11) unsigned NOT NULL auto_increment,
@@ -398,22 +387,21 @@ INSERT INTO `panel_settings` (`settinggroup`, `varname`, `value`) VALUES
 	('logger', 'logfile', ''),
 	('logger', 'logtypes', 'syslog,mysql'),
 	('logger', 'severity', '1'),
-	('dkim', 'use_dkim', '0'),
-	('dkim', 'dkim_prefix', '/etc/postfix/dkim/'),
-	('dkim', 'dkim_domains', 'domains'),
-	('dkim', 'dkim_dkimkeys', 'dkim-keys.conf'),
-	('dkim', 'dkimrestart_command', 'service dkim-filter restart'),
-	('dkim', 'privkeysuffix', '.priv'),
+	('antispam', 'activated', '0'),
+	('antispam', 'config_file', '/etc/rspamd/local.d/froxlor_settings.conf'),
+	('antispam', 'reload_command', 'service rspamd restart'),
+	('antispam', 'dkim_keylength', '1024'),
+	('antispam', 'default_bypass_spam', '2'),
+	('antispam', 'default_spam_rewrite_subject', '1'),
+	('antispam', 'default_policy_greylist', '1'),
 	('admin', 'show_news_feed', '0'),
 	('admin', 'show_version_login', '0'),
 	('admin', 'show_version_footer', '0'),
 	('caa', 'caa_entry', ''),
 	('spf', 'use_spf', '0'),
-	('spf', 'spf_entry', '"v=spf1 a mx -all"'),
-	('dkim', 'dkim_algorithm', 'all'),
-	('dkim', 'dkim_keylength', '1024'),
-	('dkim', 'dkim_servicetype', '0'),
-	('dkim', 'dkim_notes', ''),
+	('spf', 'spf_entry', 'v=spf1 a mx -all'),
+	('dmarc', 'use_dmarc', '0'),
+	('dmarc', 'dmarc_entry', 'v=DMARC1; p=none;'),
 	('defaultwebsrverrhandler', 'enabled', '0'),
 	('defaultwebsrverrhandler', 'err401', ''),
 	('defaultwebsrverrhandler', 'err403', ''),
@@ -511,7 +499,6 @@ opcache.save_comments
 opcache.use_cwd
 opcache.fast_shutdown'),
 	('phpfpm', 'ini_admin_values', 'cgi.redirect_status_env
-date.timezone
 disable_classes
 disable_functions
 error_log
@@ -555,7 +542,7 @@ opcache.validate_timestamps'),
 	('system', 'defaultip', '1'),
 	('system', 'defaultsslip', ''),
 	('system', 'phpappendopenbasedir', '/tmp/'),
-	('system', 'deactivateddocroot', ''),
+	('system', 'deactivateddocroot', '/var/www/html/froxlor/templates/misc/deactivated/'),
 	('system', 'mailpwcleartext', '0'),
 	('system', 'last_tasks_run', '000000'),
 	('system', 'nameservers', ''),
@@ -563,7 +550,7 @@ opcache.validate_timestamps'),
 	('system', 'mod_fcgid', '0'),
 	('system', 'apacheconf_vhost', '/etc/apache2/sites-enabled/'),
 	('system', 'apacheconf_diroptions', '/etc/apache2/sites-enabled/'),
-	('system', 'apacheconf_htpasswddir', '/etc/apache2/htpasswd/'),
+	('system', 'apacheconf_htpasswddir', '/etc/apache2/froxlor-htpasswd/'),
 	('system', 'webalizer_quiet', '2'),
 	('system', 'last_archive_run', '000000'),
 	('system', 'mod_fcgid_configdir', '/var/www/php-fcgi-scripts'),
@@ -580,7 +567,6 @@ opcache.validate_timestamps'),
 	('system', 'mod_fcgid_wrapper', '1'),
 	('system', 'mod_fcgid_starter', '0'),
 	('system', 'mod_fcgid_peardir', '/usr/share/php/:/usr/share/php5/'),
-	('system', 'index_file_extension', 'html'),
 	('system', 'mod_fcgid_maxrequests', '250'),
 	('system', 'ssl_key_file','/etc/ssl/froxlor_selfsigned.key'),
 	('system', 'ssl_ca_file', ''),
@@ -647,7 +633,7 @@ opcache.validate_timestamps'),
 	('system', 'letsencryptreuseold', 0),
 	('system', 'leenabled', '0'),
 	('system', 'leapiversion', '2'),
-	('system', 'backupenabled', '0'),
+	('system', 'exportenabled', '0'),
 	('system', 'dnsenabled', '0'),
 	('system', 'dns_server', 'Bind'),
 	('system', 'apacheglobaldiropt', ''),
@@ -655,6 +641,8 @@ opcache.validate_timestamps'),
 	('system', 'available_shells', ''),
 	('system', 'le_froxlor_enabled', '0'),
 	('system', 'le_froxlor_redirect', '0'),
+	('system', 'le_renew_hook', 'systemctl restart postfix dovecot proftpd'),
+	('system', 'le_renew_services', ''),
 	('system', 'letsencryptacmeconf', '/etc/apache2/conf-enabled/acme.conf'),
 	('system', 'mail_use_smtp', '0'),
 	('system', 'mail_smtp_host', 'localhost'),
@@ -697,7 +685,7 @@ opcache.validate_timestamps'),
 	('system', 'distribution', ''),
 	('system', 'update_channel', 'stable'),
 	('system', 'updatecheck_data', ''),
-	('system', 'update_notify_last', '2.0.23'),
+	('system', 'update_notify_last', ''),
 	('system', 'traffictool', 'goaccess'),
 	('system', 'req_limit_per_interval', 60),
 	('system', 'req_limit_interval', 60),
@@ -705,7 +693,7 @@ opcache.validate_timestamps'),
 	('api', 'customer_default', '1'),
 	('2fa', 'enabled', '1'),
 	('panel', 'decimal_places', '4'),
-	('panel', 'adminmail', 'admin@SERVERNAME'),
+	('panel', 'adminmail', 'ADMIN_MAIL'),
 	('panel', 'phpmyadmin_url', ''),
 	('panel', 'webmail_url', ''),
 	('panel', 'webftp_url', ''),
@@ -744,8 +732,9 @@ opcache.validate_timestamps'),
 	('panel', 'logo_overridetheme', '0'),
 	('panel', 'logo_overridecustom', '0'),
 	('panel', 'settings_mode', '0'),
-	('panel', 'version', '2.0.23'),
-	('panel', 'db_version', '202304260');
+	('panel', 'menu_collapsed', '1'),
+	('panel', 'version', '2.2.8'),
+	('panel', 'db_version', '202412030');
 
 
 DROP TABLE IF EXISTS `panel_tasks`;
@@ -768,6 +757,7 @@ CREATE TABLE `panel_templates` (
   `templategroup` varchar(255) NOT NULL default '',
   `varname` varchar(255) NOT NULL default '',
   `value` longtext NOT NULL,
+  `file_extension` varchar(50) NOT NULL default 'html',
   PRIMARY KEY  (id),
   KEY adminid (adminid)
 ) ENGINE=InnoDB CHARSET=utf8 COLLATE=utf8_general_ci;
@@ -914,7 +904,7 @@ INSERT INTO `cronjobs_run` (`id`, `module`, `cronfile`, `cronclass`, `interval`,
 	(3, 'froxlor/reports', 'usage_report', '\\Froxlor\\Cron\\Traffic\\ReportsCron', '1 DAY', '1', 'cron_usage_report'),
 	(4, 'froxlor/core', 'mailboxsize', '\\Froxlor\\Cron\\System\\MailboxsizeCron', '6 HOUR', '1', 'cron_mailboxsize'),
 	(5, 'froxlor/letsencrypt', 'letsencrypt', '\\Froxlor\\Cron\\Http\\LetsEncrypt\\AcmeSh', '5 MINUTE', '0', 'cron_letsencrypt'),
-	(6, 'froxlor/backup', 'backup', '\\Froxlor\\Cron\\System\\BackupCron', '1 DAY', '0', 'cron_backup');
+	(6, 'froxlor/export', 'export', '\\Froxlor\\Cron\\System\\ExportCron', '1 HOUR', '0', 'cron_export');
 
 
 DROP TABLE IF EXISTS `ftp_quotalimits`;
@@ -1052,4 +1042,25 @@ CREATE TABLE `panel_usercolumns` (
   KEY adminid (adminid),
   KEY customerid (customerid)
 ) ENGINE=InnoDB CHARSET=utf8 COLLATE=utf8_general_ci;
+
+
+DROP TABLE IF EXISTS `panel_loginlinks`;
+CREATE TABLE `panel_loginlinks` (
+  `hash` varchar(500) NOT NULL,
+  `loginname` varchar(50) NOT NULL,
+  `valid_until` int(15) NOT NULL,
+  `allowed_from` text NOT NULL,
+  UNIQUE KEY `loginname` (`loginname`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci;
+
+
+DROP TABLE IF EXISTS `panel_2fa_tokens`;
+CREATE TABLE `panel_2fa_tokens` (
+  `id` int(11) NOT NULL auto_increment,
+  `selector` varchar(200) NOT NULL,
+  `token` varchar(200) NOT NULL,
+  `userid` int(11) NOT NULL default '0',
+  `valid_until` int(15) NOT NULL,
+  PRIMARY KEY  (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci;
 FROXLORSQL;

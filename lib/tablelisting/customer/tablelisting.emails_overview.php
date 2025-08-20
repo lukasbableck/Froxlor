@@ -33,9 +33,9 @@ return [
 		'title' => lng('menue.email.emailsoverview'),
 		'icon' => 'fa-solid fa-envelope',
 		'self_overview' => ['section' => 'email', 'page' => 'overview'],
-		'default_sorting' => ['d.domain' => 'asc'],
+		'default_sorting' => ['d.domain_ace' => 'asc'],
 		'columns' => [
-			'd.domain' => [
+			'd.domain_ace' => [
 				'label' => 'Domain',
 				'field' => 'domain',
 			],
@@ -56,7 +56,7 @@ return [
 			],
 		],
 		'visible_columns' => Listing::getVisibleColumnsForListing('emaildomain_list', [
-			'd.domain',
+			'd.domain_ace',
 			'addresses',
 			'accounts',
 			'forwarder',

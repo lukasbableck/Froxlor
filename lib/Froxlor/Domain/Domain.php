@@ -235,51 +235,30 @@ class Domain
 	}
 
 	/**
-	 * check whether a domain has subdomains added as full-domains
-	 * #329
+	 * get ids of domains that are main domains but a subdomain of another main domain (for DNS)
 	 *
-	 * @param int $id domain-id
+	 * @param int $id main-domain to check
 	 *
-	 * @return bool
+	 * @return array
 	 * @throws \Exception
 	 */
-	public static function domainHasMainSubDomains(int $id): bool
+	public static function getMainSubdomainIds(int $id): array
 	{
 		$result_stmt = Database::prepare("
-		SELECT COUNT(`id`) as `mainsubs` FROM `" . TABLE_PANEL_DOMAINS . "`
-		WHERE `ismainbutsubto` = :id");
-		$result = Database::pexecute_first($result_stmt, [
-			'id' => $id
-		]);
-
-		if ($result && isset($result['mainsubs'])) {
-			return $result['mainsubs'] > 0;
-		}
-		return false;
-	}
-
-	/**
-	 * check whether a subof-domain exists
-	 * #329
-	 *
-	 * @param int $id subof-domain-id
-	 *
-	 * @return bool
-	 * @throws \Exception
-	 */
-	public static function domainMainToSubExists(int $id): bool
-	{
-		$result_stmt = Database::prepare("
-		SELECT `id` FROM `" . TABLE_PANEL_DOMAINS . "` WHERE `id` = :id");
+			SELECT id
+			FROM `" . TABLE_PANEL_DOMAINS . "`
+			WHERE
+			isbinddomain = 1 AND
+			domain LIKE CONCAT('%.', ( SELECT d.domain FROM `" . TABLE_PANEL_DOMAINS . "` AS d WHERE d.id = :id ))
+		");
 		Database::pexecute($result_stmt, [
 			'id' => $id
 		]);
-		$result = $result_stmt->fetch(PDO::FETCH_ASSOC);
-
-		if ($result && isset($result['id'])) {
-			return $result['id'] > 0;
+		$result = [];
+		while ($entry = $result_stmt->fetch(PDO::FETCH_ASSOC)) {
+			$result[] = $entry['id'];
 		}
-		return false;
+		return $result;
 	}
 
 	/**
@@ -341,12 +320,15 @@ class Domain
 	 * @throws \Exception
 	 */
 	public static function triggerLetsEncryptCSRForAliasDestinationDomain(
-		int $aliasDestinationDomainID,
+		int           $aliasDestinationDomainID,
 		FroxlorLogger $log
 	) {
 		if ($aliasDestinationDomainID > 0) {
-			$log->logAction(FroxlorLogger::ADM_ACTION, LOG_INFO,
-				"LetsEncrypt CSR triggered for domain ID " . $aliasDestinationDomainID);
+			$log->logAction(
+				FroxlorLogger::ADM_ACTION,
+				LOG_INFO,
+				"LetsEncrypt CSR triggered for domain ID " . $aliasDestinationDomainID
+			);
 			$upd_stmt = Database::prepare("UPDATE
 					`" . TABLE_PANEL_DOMAIN_SSL_SETTINGS . "`
 				SET
@@ -370,15 +352,20 @@ class Domain
 		$acmesh = AcmeSh::getAcmeSh();
 		if (file_exists($acmesh)) {
 			$certificate_folder = AcmeSh::getWorkingDirFromEnv($domainname);
-			if (file_exists($certificate_folder)) {
+			$certificate_ecc_folder = AcmeSh::getWorkingDirFromEnv($domainname, true);
+			if (file_exists($certificate_folder) || file_exists($certificate_ecc_folder)) {
 				$params = " --remove -d " . $domainname;
-				if (Settings::Get('system.leecc') > 0) {
+				if (file_exists($certificate_ecc_folder)) {
 					$params .= " --ecc";
 				}
 				// run remove command
 				FileDir::safe_exec($acmesh . $params);
 				// remove certificates directory
-				FileDir::safe_exec('rm -rf ' . $certificate_folder);
+				if (file_exists($certificate_folder)) {
+					FileDir::safe_exec('rm -rf ' . $certificate_folder);
+				} elseif (file_exists($certificate_ecc_folder)) {
+					FileDir::safe_exec('rm -rf ' . $certificate_ecc_folder);
+				}
 			}
 		}
 		return true;

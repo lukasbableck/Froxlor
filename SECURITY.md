@@ -10,9 +10,11 @@ With that, good luck hacking us ;)
 
 ## Supported versions
 
-- ️✅ **2.x**  (`main` git-branch)
-- ❌ 0.10.x (`0.10.x` git-branch)
-- ❌ 0.9.x (`0.9.x`git-branch)
+- ️✅ **2.2.x**  (`main` git-branch)
+- ️✅ **2.1.x**  (`v2.1` git-branch)
+- ❌ 2.0.x (`2.0.x`-tags)
+- ❌ 0.10.x (`0.10.x`-tags)
+- ❌ other git-branches
 
 ## Qualifying Vulnerabilities
 
@@ -26,7 +28,7 @@ With that, good luck hacking us ;)
 
 ### Vulnerabilities we accept
 
-Only reproducable issues on a default/clean setup from the latest stable release of a supported version will be accepted.
+Only reproducible issues on a default/clean setup from the latest stable release of a supported version will be accepted.
 
 ## Non-Qualifying Vulnerabilities
 
@@ -34,6 +36,8 @@ Only reproducable issues on a default/clean setup from the latest stable release
 - Theoretical attacks without proof of exploitability
 - Attacks that are the result of a third party library should be reported to the library maintainers
 - Social engineering
+- Attacks that require disabling security features or reducing the security level of the environment
+- Exploits by an admin user itself (privileged user and implicitly trusted)
 - Reflected file download
 - Physical attacks
 - Weak SSL/TLS/SSH algorithms or protocols
@@ -44,4 +48,4 @@ Only reproducable issues on a default/clean setup from the latest stable release
 
 ## Reporting a Vulnerability
 
-If you think you have found a vulnerability in froxlor, please head over to [https://huntr.dev/repos/froxlor/froxlor](https://huntr.dev/repos/froxlor/froxlor) and use the reporting possibilities there as we are funding the prize-pot for froxlor on this platform. Also, please give us appropriate time to fix the issue and build update-packages before publishing anything into the wild. Alternatively you can send us an email to [team@froxlor.org](team@froxlor.org).
+If you think you have found a vulnerability in froxlor, please head over to [https://github.com/Froxlor/Froxlor/security/advisories](https://github.com/Froxlor/Froxlor/security/advisories/new) and use the reporting possibilities there. Also, please give us appropriate time to fix the issue and build update-packages before publishing anything into the wild. Alternatively you can email us to [team@froxlor.org](team@froxlor.org).

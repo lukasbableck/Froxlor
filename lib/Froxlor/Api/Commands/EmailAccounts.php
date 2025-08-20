@@ -95,9 +95,13 @@ class EmailAccounts extends ApiCommand implements ResourceEntity
 			$customer = $this->getCustomerData('email_accounts');
 
 			// check for imap||pop3 == 1, see #1298
+			// d00p, 6.5.2023 @revert this - if a customer has resources which allow email accounts
+			// it implicitly allowed SMTP, e.g. sending of emails which also requires an account to exist
+			/*
 			if ($customer['imap'] != '1' && $customer['pop3'] != '1') {
 				Response::standardError('notallowedtouseaccounts', '', true);
 			}
+			*/
 
 			if (!empty($emailaddr)) {
 				$idna_convert = new IdnaWrapper();
@@ -153,10 +157,10 @@ class EmailAccounts extends ApiCommand implements ResourceEntity
 
 			// prefix hash-algo
 			switch (Settings::Get('system.passwordcryptfunc')) {
-				case PASSWORD_ARGON2I:
+				case 'argon2i':
 					$cpPrefix = '{ARGON2I}';
 					break;
-				case PASSWORD_ARGON2ID:
+				case 'argon2id':
 					$cpPrefix = '{ARGON2ID}';
 					break;
 				default:
@@ -256,10 +260,12 @@ class EmailAccounts extends ApiCommand implements ResourceEntity
 				$_mailerror = false;
 				$mailerr_msg = "";
 				try {
-					$this->mailer()->setFrom($admin['email'], User::getCorrectUserSalutation($admin));
+					$this->mailer()->setFrom(Settings::Get('panel.adminmail'), User::getCorrectUserSalutation($admin));
+					$this->mailer()->clearReplyTos();
+					$this->mailer()->addReplyTo($admin['email'], User::getCorrectUserSalutation($admin));
 					$this->mailer()->Subject = $mail_subject;
 					$this->mailer()->AltBody = $mail_body;
-					$this->mailer()->msgHTML(str_replace("\n", "<br />", $mail_body));
+					$this->mailer()->Body = str_replace("\n", "<br />", $mail_body);
 					$this->mailer()->addAddress($email_full);
 					$this->mailer()->send();
 				} catch (\PHPMailer\PHPMailer\Exception $e) {
@@ -286,7 +292,9 @@ class EmailAccounts extends ApiCommand implements ResourceEntity
 
 					$_mailerror = false;
 					try {
-						$this->mailer()->setFrom($admin['email'], User::getCorrectUserSalutation($admin));
+						$this->mailer()->setFrom(Settings::Get('panel.adminmail'), User::getCorrectUserSalutation($admin));
+						$this->mailer()->clearReplyTos();
+						$this->mailer()->addReplyTo($admin['email'], User::getCorrectUserSalutation($admin));
 						$this->mailer()->Subject = $mail_subject;
 						$this->mailer()->AltBody = $mail_body;
 						$this->mailer()->msgHTML(str_replace("\n", "<br />", $mail_body));
@@ -400,10 +408,10 @@ class EmailAccounts extends ApiCommand implements ResourceEntity
 			$password = Crypt::validatePassword($password, true);
 			// prefix hash-algo
 			switch (Settings::Get('system.passwordcryptfunc')) {
-				case PASSWORD_ARGON2I:
+				case 'argon2i':
 					$cpPrefix = '{ARGON2I}';
 					break;
-				case PASSWORD_ARGON2ID:
+				case 'argon2id':
 					$cpPrefix = '{ARGON2ID}';
 					break;
 				default:
@@ -519,7 +527,7 @@ class EmailAccounts extends ApiCommand implements ResourceEntity
 		$result = $this->apiCall('Emails.get', [
 			'id' => $id,
 			'emailaddr' => $emailaddr
-		]);
+		], true);
 		$id = $result['id'];
 
 		if (empty($result['popaccountid']) || $result['popaccountid'] == 0) {
@@ -559,7 +567,7 @@ class EmailAccounts extends ApiCommand implements ResourceEntity
 		}
 
 		if ($delete_userfiles) {
-			Cronjob::inserttask(TaskId::DELETE_EMAIL_DATA, $customer['loginname'], $result['email_full']);
+			Cronjob::inserttask(TaskId::DELETE_EMAIL_DATA, $customer['loginname'], FileDir::makeCorrectDir($result['homedir'] . '/' . $result['maildir']));
 		}
 
 		// decrease usage for customer

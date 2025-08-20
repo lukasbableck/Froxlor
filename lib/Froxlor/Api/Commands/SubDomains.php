@@ -67,6 +67,8 @@ class SubDomains extends ApiCommand implements ResourceEntity
 	 *            optional, php-settings-id, if empty the $domain value is used
 	 * @param int $redirectcode
 	 *            optional, redirect-code-id from TABLE_PANEL_REDIRECTCODES
+	 * @param int $speciallogfile
+	 *            optional, whether to create an exclusive web-logfile for this domain (1) or not (0) or inherit value from parentdomain (2, default)
 	 * @param bool $sslenabled
 	 *            optional, whether or not SSL is enabled for this domain, regardless of the assigned ssl-ips, default
 	 *            1 (true)
@@ -107,6 +109,7 @@ class SubDomains extends ApiCommand implements ResourceEntity
 			$openbasedir_path = $this->getParam('openbasedir_path', true, 0);
 			$phpsettingid = $this->getParam('phpsettingid', true, 0);
 			$redirectcode = $this->getParam('redirectcode', true, Settings::Get('customredirect.default'));
+			$speciallogfile = intval($this->getParam('speciallogfile', true, 2));
 			$isemaildomain = $this->getParam('isemaildomain', true, 0);
 			if (Settings::Get('system.use_ssl')) {
 				$sslenabled = $this->getBoolParam('sslenabled', true, 1);
@@ -229,6 +232,9 @@ class SubDomains extends ApiCommand implements ResourceEntity
 			} elseif ($completedomain_check && strtolower($completedomain_check['domain']) == strtolower($completedomain)) {
 				// the domain does already exist as main-domain
 				Response::standardError('domainexistalready', $completedomain, true);
+			} elseif ((int)$domain_check['deactivated'] == 1) {
+				// main domain is deactivated
+				Response::standardError('maindomaindeactivated', $domain, true);
 			}
 
 			// if allowed, check for 'is email domain'-flag
@@ -273,6 +279,11 @@ class SubDomains extends ApiCommand implements ResourceEntity
 				$ssl_redirect = 2;
 			}
 
+			// validate speciallogfile value
+			if ($speciallogfile < 0 || $speciallogfile > 2) {
+				$speciallogfile = 2; // inherit from parent-domain
+			}
+
 			// get the phpsettingid from parentdomain, #107
 			$phpsid_stmt = Database::prepare("
 				SELECT `phpsettingid` FROM `" . TABLE_PANEL_DOMAINS . "` WHERE `id` = :id
@@ -285,21 +296,24 @@ class SubDomains extends ApiCommand implements ResourceEntity
 				// assign default config
 				$phpsid_result['phpsettingid'] = 1;
 			}
-			// check whether the customer has chosen its own php-config
-			if ($phpsettingid > 0 && $phpsettingid != $phpsid_result['phpsettingid']) {
-				$phpsid_result['phpsettingid'] = intval($phpsettingid);
-			}
 
-			$allowed_phpconfigs = $customer['allowed_phpconfigs'];
-			if (!empty($allowed_phpconfigs)) {
-				$allowed_phpconfigs = json_decode($allowed_phpconfigs, true);
-			} else {
-				$allowed_phpconfigs = [];
-			}
-			// only with fcgid/fpm enabled will it be possible to select a php-setting
-			if ((int)Settings::Get('system.mod_fcgid') == 1 || (int)Settings::Get('phpfpm.enabled') == 1) {
-				if (!in_array($phpsid_result['phpsettingid'], $allowed_phpconfigs)) {
-					Response::standardError('notallowedphpconfigused', '', true);
+			if ($domain_check['phpenabled'] == 1) {
+				// check whether the customer has chosen its own php-config
+				if ($phpsettingid > 0 && $phpsettingid != $phpsid_result['phpsettingid']) {
+					$phpsid_result['phpsettingid'] = intval($phpsettingid);
+				}
+
+				$allowed_phpconfigs = $customer['allowed_phpconfigs'];
+				if (!empty($allowed_phpconfigs)) {
+					$allowed_phpconfigs = json_decode($allowed_phpconfigs, true);
+				} else {
+					$allowed_phpconfigs = [];
+				}
+				// only with fcgid/fpm enabled will it be possible to select a php-setting
+				if ((int)Settings::Get('system.mod_fcgid') == 1 || (int)Settings::Get('phpfpm.enabled') == 1) {
+					if (!in_array($phpsid_result['phpsettingid'], $allowed_phpconfigs)) {
+						Response::standardError('notallowedphpconfigused', '', true);
+					}
 				}
 			}
 
@@ -351,7 +365,7 @@ class SubDomains extends ApiCommand implements ResourceEntity
 				"openbasedir" => $domain_check['openbasedir'],
 				"openbasedir_path" => $openbasedir_path,
 				"phpenabled" => $domain_check['phpenabled'],
-				"speciallogfile" => $domain_check['speciallogfile'],
+				"speciallogfile" => $speciallogfile == 2 ? $domain_check['speciallogfile'] : $speciallogfile,
 				"specialsettings" => $domain_check['specialsettings'],
 				"ssl_specialsettings" => $domain_check['ssl_specialsettings'],
 				"include_specialsettings" => $domain_check['include_specialsettings'],
@@ -489,8 +503,7 @@ class SubDomains extends ApiCommand implements ResourceEntity
 			$this->logger()->logAction($this->isAdmin() ? FroxlorLogger::ADM_ACTION : FroxlorLogger::USR_ACTION, LOG_INFO, "[API] get subdomain '" . $result['domain'] . "'");
 			return $this->response($result);
 		}
-		$key = ($id > 0 ? "id #" . $id : "domainname '" . $domainname . "'");
-		throw new Exception("Subdomain with " . $key . " could not be found", 404);
+		throw new Exception("Requested subdomain could not be found", 404);
 	}
 
 	private function getHasCertValueForDomain(int $domainid, int $parentdomainid): int
@@ -536,32 +549,33 @@ class SubDomains extends ApiCommand implements ResourceEntity
 	 */
 	private function validateDomainDocumentRoot($path = null, $url = null, $customer = null, $completedomain = null, &$_doredirect = false)
 	{
-		// check whether an URL was specified
 		$_doredirect = false;
-		if (!empty($url) && Validate::validateUrl($url, true)) {
-			$path = $url;
+		$idna = new IdnaWrapper();
+
+		// url mode: either $url or $path begins with http:// or https://
+		$maybeUrl = !empty($url) ? $url : (preg_match('/^https?\:\/\//', $path) ? $path : '');
+		if ($maybeUrl !== '') {
+			$encoded = $idna->encode($maybeUrl);
+			if (!Validate::validateUrl($encoded, true)) {
+				Response::standardError('invaliddocumentrooturl', '', true);
+			}
 			$_doredirect = true;
-		} else {
-			$path = Validate::validate($path, 'path', '', '', [], true);
+			return $encoded;
 		}
 
-		// check whether path is a real path
-		if (!preg_match('/^https?\:\/\//', $path) || !Validate::validateUrl($path, true)) {
-			if (strstr($path, ":") !== false) {
-				Response::standardError('pathmaynotcontaincolon', '', true);
-			}
-			// If path is empty or '/' and 'Use domain name as default value for DocumentRoot path' is enabled in settings,
-			// set default path to subdomain or domain name
-			if ((($path == '') || ($path == '/')) && Settings::Get('system.documentroot_use_default_value') == 1) {
-				$path = FileDir::makeCorrectDir($customer['documentroot'] . '/' . $completedomain);
-			} else {
-				$path = FileDir::makeCorrectDir($customer['documentroot'] . '/' . $path);
-			}
-		} else {
-			// no it's not, create a redirect
-			$_doredirect = true;
+		// path mode: regular directory path
+		$path = Validate::validate($path, 'path', Validate::REGEX_DIR, '', [], true);
+
+		// default path if empty and setting active
+		if (($path === '' || $path === '/') && Settings::Get('system.documentroot_use_default_value') == 1) {
+			return FileDir::makeCorrectDir($customer['documentroot'] . '/' . $completedomain, $customer['documentroot']);
 		}
-		return $path;
+		// check if path does not contain a colon
+		if (strpos($path, ':') !== false) {
+			Response::standardError('pathmaynotcontaincolon', '', true);
+		}
+
+		return FileDir::makeCorrectDir($customer['documentroot'] . '/' . $path, $customer['documentroot']);
 	}
 
 	/**
@@ -588,6 +602,11 @@ class SubDomains extends ApiCommand implements ResourceEntity
 	 *            optional, php-settings-id, if empty the $domain value is used
 	 * @param int $redirectcode
 	 *            optional, redirect-code-id from TABLE_PANEL_REDIRECTCODES
+	 * @param bool $speciallogfile
+	 *            optional, whether to create an exclusive web-logfile for this domain
+	 * @param bool $speciallogverified
+	 *            optional, when setting $speciallogfile to false, this needs to be set to true to confirm the action,
+	 *            default 0 (false)
 	 * @param bool $sslenabled
 	 *            optional, whether or not SSL is enabled for this domain, regardless of the assigned ssl-ips, default
 	 *            1 (true)
@@ -645,6 +664,8 @@ class SubDomains extends ApiCommand implements ResourceEntity
 		$openbasedir_path = $this->getParam('openbasedir_path', true, $result['openbasedir_path']);
 		$phpsettingid = $this->getParam('phpsettingid', true, $result['phpsettingid']);
 		$redirectcode = $this->getParam('redirectcode', true, Domain::getDomainRedirectId($id));
+		$speciallogfile = $this->getBoolParam('speciallogfile', true, $result['speciallogfile']);
+		$speciallogverified = $this->getBoolParam('speciallogverified', true, 0);
 		if (Settings::Get('system.use_ssl')) {
 			$sslenabled = $this->getBoolParam('sslenabled', true, $result['ssl_enabled']);
 			$ssl_redirect = $this->getBoolParam('ssl_redirect', true, $result['ssl_redirect']);
@@ -754,6 +775,10 @@ class SubDomains extends ApiCommand implements ResourceEntity
 			$ssl_redirect = 2;
 		}
 
+		if ($speciallogfile != $result['speciallogfile'] && $speciallogverified != '1') {
+			$speciallogfile = $result['speciallogfile'];
+		}
+
 		// is-email-domain flag changed - remove mail accounts and mail-addresses
 		if (($result['isemaildomain'] == '1') && $isemaildomain == '0') {
 			$params = [
@@ -775,7 +800,7 @@ class SubDomains extends ApiCommand implements ResourceEntity
 			$allowed_phpconfigs = [];
 		}
 		// only with fcgid/fpm enabled will it be possible to select a php-setting
-		if ((int)Settings::Get('system.mod_fcgid') == 1 || (int)Settings::Get('phpfpm.enabled') == 1) {
+		if ((int)$result['phpenabled'] == 1 && ((int)Settings::Get('system.mod_fcgid') == 1 || (int)Settings::Get('phpfpm.enabled') == 1)) {
 			if (!in_array($phpsettingid, $allowed_phpconfigs)) {
 				Response::standardError('notallowedphpconfigused', '', true);
 			}
@@ -786,7 +811,22 @@ class SubDomains extends ApiCommand implements ResourceEntity
 			Domain::updateRedirectOfDomain($id, $redirectcode);
 		}
 
-		if ($path != $result['documentroot'] || $isemaildomain != $result['isemaildomain'] || $wwwserveralias != $result['wwwserveralias'] || $iswildcarddomain != $result['iswildcarddomain'] || $aliasdomain != (int)$result['aliasdomain'] || $openbasedir_path != $result['openbasedir_path'] || $ssl_redirect != $result['ssl_redirect'] || $letsencrypt != $result['letsencrypt'] || $hsts_maxage != $result['hsts'] || $hsts_sub != $result['hsts_sub'] || $hsts_preload != $result['hsts_preload'] || $phpsettingid != $result['phpsettingid'] || $http2 != $result['http2']) {
+		if ($path != $result['documentroot']
+			|| $isemaildomain != $result['isemaildomain']
+			|| $wwwserveralias != $result['wwwserveralias']
+			|| $iswildcarddomain != $result['iswildcarddomain']
+			|| $aliasdomain != (int)$result['aliasdomain']
+			|| $openbasedir_path != $result['openbasedir_path']
+			|| $sslenabled != $result['ssl_enabled']
+			|| $ssl_redirect != $result['ssl_redirect']
+			|| $letsencrypt != $result['letsencrypt']
+			|| $hsts_maxage != $result['hsts']
+			|| $hsts_sub != $result['hsts_sub']
+			|| $hsts_preload != $result['hsts_preload']
+			|| $phpsettingid != $result['phpsettingid']
+			|| $http2 != $result['http2']
+			|| ($speciallogfile != $result['speciallogfile'] && $speciallogverified == '1')
+		) {
 			$stmt = Database::prepare("
 					UPDATE `" . TABLE_PANEL_DOMAINS . "` SET
 					`documentroot` = :documentroot,
@@ -802,7 +842,8 @@ class SubDomains extends ApiCommand implements ResourceEntity
 					`hsts` = :hsts,
 					`hsts_sub` = :hsts_sub,
 					`hsts_preload` = :hsts_preload,
-					`phpsettingid` = :phpsettingid
+					`phpsettingid` = :phpsettingid,
+					`speciallogfile` = :speciallogfile
 					WHERE `customerid`= :customerid AND `id`= :id
 				");
 			$params = [
@@ -820,6 +861,7 @@ class SubDomains extends ApiCommand implements ResourceEntity
 				"hsts_sub" => $hsts_sub,
 				"hsts_preload" => $hsts_preload,
 				"phpsettingid" => $phpsettingid,
+				"speciallogfile" => $speciallogfile,
 				"customerid" => $customer['customerid'],
 				"id" => $id
 			];
@@ -865,7 +907,7 @@ class SubDomains extends ApiCommand implements ResourceEntity
 	}
 
 	/**
-	 * lists all subdomain entries
+	 * lists all customer domain/subdomain entries
 	 *
 	 * @param bool $with_ips
 	 *            optional, default true
@@ -910,15 +952,10 @@ class SubDomains extends ApiCommand implements ResourceEntity
 				$custom_list_result = $_custom_list_result['list'];
 			}
 			$customer_ids = [];
-			$customer_stdsubs = [];
 			foreach ($custom_list_result as $customer) {
 				$customer_ids[] = $customer['customerid'];
-				$customer_stdsubs[$customer['customerid']] = $customer['standardsubdomain'];
 			}
 			if (empty($customer_ids)) {
-				throw new Exception("Required resource unsatisfied.", 405);
-			}
-			if (empty($customer_stdsubs)) {
 				throw new Exception("Required resource unsatisfied.", 405);
 			}
 
@@ -931,9 +968,6 @@ class SubDomains extends ApiCommand implements ResourceEntity
 			}
 			$customer_ids = [
 				$this->getUserDetail('customerid')
-			];
-			$customer_stdsubs = [
-				$this->getUserDetail('customerid') => $this->getUserDetail('standardsubdomain')
 			];
 
 			$select_fields = [
@@ -949,9 +983,12 @@ class SubDomains extends ApiCommand implements ResourceEntity
 				'`d`.`parentdomainid`',
 				'`d`.`letsencrypt`',
 				'`d`.`registration_date`',
-				'`d`.`termination_date`'
+				'`d`.`termination_date`',
+				'`d`.`deactivated`',
+				'`d`.`email_only`',
 			];
 		}
+
 		$query_fields = [];
 
 		// prepare select statement
@@ -962,8 +999,7 @@ class SubDomains extends ApiCommand implements ResourceEntity
 			LEFT JOIN `" . TABLE_PANEL_DOMAINS . "` `da` ON `da`.`aliasdomain`=`d`.`id`
 			LEFT JOIN `" . TABLE_PANEL_DOMAINS . "` `pd` ON `pd`.`id`=`d`.`parentdomainid`
 			WHERE `d`.`customerid` IN (" . implode(', ', $customer_ids) . ")
-			AND `d`.`email_only` = '0'
-			AND `d`.`id` NOT IN (" . implode(', ', $customer_stdsubs) . ")" . $this->getSearchWhere($query_fields, true) . " GROUP BY `d`.`id` ORDER BY `parentdomainname` ASC, `d`.`parentdomainid` ASC " . $this->getOrderBy(true) . $this->getLimit());
+			" . $this->getSearchWhere($query_fields, true) . " GROUP BY `d`.`id` ORDER BY `parentdomainname` ASC, `d`.`parentdomainid` ASC " . $this->getOrderBy(true) . $this->getLimit());
 
 		$result = [];
 		Database::pexecute($domains_stmt, $query_fields, true, true);
@@ -1047,10 +1083,8 @@ class SubDomains extends ApiCommand implements ResourceEntity
 				$custom_list_result = $_custom_list_result['list'];
 			}
 			$customer_ids = [];
-			$customer_stdsubs = [];
 			foreach ($custom_list_result as $customer) {
 				$customer_ids[] = $customer['customerid'];
-				$customer_stdsubs[$customer['customerid']] = $customer['standardsubdomain'];
 			}
 		} else {
 			if (Settings::IsInList('panel.customer_hide_options', 'domains')) {
@@ -1059,21 +1093,19 @@ class SubDomains extends ApiCommand implements ResourceEntity
 			$customer_ids = [
 				$this->getUserDetail('customerid')
 			];
-			$customer_stdsubs = [
-				$this->getUserDetail('customerid') => $this->getUserDetail('standardsubdomain')
-			];
 		}
-		// prepare select statement
-		$domains_stmt = Database::prepare("
-			SELECT COUNT(*) as num_subdom
-			FROM `" . TABLE_PANEL_DOMAINS . "` `d`
-			WHERE `d`.`customerid` IN (" . implode(', ', $customer_ids) . ")
-			AND `d`.`email_only` = '0'
-			AND `d`.`id` NOT IN (" . implode(', ', $customer_stdsubs) . ")
-		");
-		$result = Database::pexecute_first($domains_stmt, null, true, true);
-		if ($result) {
-			return $this->response($result['num_subdom']);
+
+		if (!empty($customer_ids)) {
+			// prepare select statement
+			$domains_stmt = Database::prepare("
+				SELECT COUNT(*) as num_subdom
+				FROM `" . TABLE_PANEL_DOMAINS . "` `d`
+				WHERE `d`.`customerid` IN (" . implode(', ', $customer_ids) . ")
+			");
+			$result = Database::pexecute_first($domains_stmt, null, true, true);
+			if ($result) {
+				return $this->response($result['num_subdom']);
+			}
 		}
 		return $this->response(0);
 	}

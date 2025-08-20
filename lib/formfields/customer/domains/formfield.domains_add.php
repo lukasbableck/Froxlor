@@ -84,12 +84,23 @@ return [
 						'select_var' => $openbasedir
 					],
 					'phpsettingid' => [
-						'visible' => ((int)Settings::Get('system.mod_fcgid') == 1 || (int)Settings::Get('phpfpm.enabled') == 1) && count($phpconfigs) > 0,
+						'visible' => ((int)Settings::Get('system.mod_fcgid') == 1 || (int)Settings::Get('phpfpm.enabled') == 1) && count($phpconfigs) > 0 && $userinfo['phpenabled'] == '1',
 						'label' => lng('admin.phpsettings.title'),
 						'type' => 'select',
 						'select_var' => $phpconfigs,
 						'selected' => (int)Settings::Get('phpfpm.enabled') == 1 ? Settings::Get('phpfpm.defaultini') : Settings::Get('system.mod_fcgid_defaultini')
-					]
+					],
+					'speciallogfile' => [
+						'label' => lng('admin.speciallogfile.title'),
+						'desc' => lng('admin.speciallogfile.description'),
+						'type' => 'select',
+						'select_var' => [
+							0 => lng('panel.no'),
+							1 => lng('panel.yes'),
+							2 => lng('domain.inherited')
+						],
+						'selected' => 2
+					],
 				]
 			],
 			'section_bssl' => [

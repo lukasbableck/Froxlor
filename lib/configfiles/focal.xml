@@ -9,12 +9,14 @@
 			<default for="lighttpd" settinggroup="system" varname="apacheconf_diroptions" value="/etc/lighttpd/froxlor-diroptions/"></default>
 			<default for="lighttpd" settinggroup="system" varname="apacheconf_htpasswddir" value="/etc/lighttpd/froxlor-htpasswd/"></default>
 			<default for="lighttpd" settinggroup="system" varname="apachereload_command" value="service lighttpd reload"></default>
-			<default for="lighttpd" settinggroup="system" varname="letsencryptacmeconf" value="/etc/lighttpd/acme.conf"></default>
+			<default for="lighttpd" settinggroup="system" varname="letsencryptacmeconf" value="/etc/lighttpd/acme.conf"></default>+
+			<default for="lighttpd" settinggroup="phpfpm" varname="fastcgi_ipcdir" value="/var/run/lighttpd/"></default>
 			<default for="nginx" settinggroup="system" varname="apacheconf_vhost" value="/etc/nginx/sites-enabled/"></default>
 			<default for="nginx" settinggroup="system" varname="apacheconf_diroptions" value="/etc/nginx/sites-enabled/"></default>
 			<default for="nginx" settinggroup="system" varname="apacheconf_htpasswddir" value="/etc/nginx/froxlor-htpasswd/"></default>
 			<default for="nginx" settinggroup="system" varname="apachereload_command" value="service nginx reload"></default>
 			<default for="nginx" settinggroup="system" varname="letsencryptacmeconf" value="/etc/nginx/acme.conf"></default>
+			<default for="nginx" settinggroup="phpfpm" varname="fastcgi_ipcdir" value="/var/run/php/"></default>
 		</defaults>
 		<services>
 			<!-- HTTP -->
@@ -89,7 +91,7 @@ Alias "/.well-known/acme-challenge" "{{settings.system.letsencryptchallengepath}
 					<command><![CDATA[{{settings.system.apachereload_command}}]]></command>
 				</daemon>
 				<!-- HTTP Lighttpd -->
-				<daemon name="lighttpd" title="LigHTTPd">
+				<daemon name="lighttpd" title="LigHTTPd (deprecated)">
 					<install><![CDATA[apt-get install lighttpd]]></install>
 					<file name="/etc/lighttpd/lighttpd.conf">
 						<content><![CDATA[
@@ -165,8 +167,9 @@ include_shell "/usr/share/lighttpd/include-conf-enabled.pl"
 					<file name="/etc/nginx/nginx.conf" backup="true">
 						<content><![CDATA[
 user www-data;
-worker_processes 4;
+worker_processes auto;
 pid /var/run/nginx.pid;
+include /etc/nginx/modules-enabled/*.conf;
 
 events {
 	worker_connections 768;
@@ -1515,7 +1518,7 @@ user = <SQL_UNPRIVILEGED_USER>
 password = <SQL_UNPRIVILEGED_PASSWORD>
 dbname = <SQL_DB>
 hosts = <SQL_HOST>
-query = SELECT domain FROM panel_domains WHERE domain = '%s' AND isemaildomain = '1'
+query = SELECT domain FROM panel_domains WHERE domain = '%s' AND isemaildomain = '1' AND deactivated = 0
 ]]>
 							</content>
 						</file>
@@ -1583,7 +1586,7 @@ noc: root
 security: root
 
 # change this to a valid e-mail address you can access
-root:               root@<SERVERNAME>
+root:               <ADMIN_MAIL>
 ]]>
 							</content>
 						</file>
@@ -1640,7 +1643,7 @@ compatibility_level = 2
 # for the case of a subdomain, $mydomain *must* be equal to $myhostname,
 # otherwise you cannot use the main domain for virtual transport.
 # also check the note about $mydomain below.
-myhostname = mail.$mydomain
+myhostname = $mydomain
 #myhostname = virtual.domain.tld
 
 # The mydomain parameter specifies the local internet domain name.
@@ -1654,8 +1657,8 @@ myhostname = mail.$mydomain
 # FQDN from Froxlor
 mydomain = <SERVERNAME>
 
-#mydestination = $myhostname, localhost.$mydomain, localhost
-mydestination = $myhostname, localhost.$mydomain, localhost, $mydomain
+mydestination = $myhostname, localhost.$mydomain, localhost
+#mydestination = $myhostname, localhost.$mydomain, localhost, $mydomain
 #mydestination = $myhostname, localhost.$mydomain, localhost, $mydomain,
 #	mail.$mydomain, www.$mydomain, ftp.$mydomain
 
@@ -3352,6 +3355,107 @@ plugin {
 					</include>
 				</daemon>
 			</service>
+			<!-- Antispam services -->
+			<service type="antispam" title="Antispam">
+				<!-- general RSpamd commands -->
+				<general>
+					<commands index="1">
+						<command><![CDATA[DEBIAN_FRONTEND=noninteractive apt-get -yq --no-install-recommends install wget gnupg]]></command>
+						<command><![CDATA[mkdir -p /etc/apt/keyrings]]></command>
+						<command><![CDATA[wget -O- https://rspamd.com/apt-stable/gpg.key | gpg --dearmor | tee /etc/apt/keyrings/rspamd.gpg > /dev/null]]></command>
+						<command><![CDATA[echo "deb [signed-by=/etc/apt/keyrings/rspamd.gpg] http://rspamd.com/apt-stable/ focal main" > /etc/apt/sources.list.d/rspamd.list]]></command>
+						<command><![CDATA[echo "deb-src [signed-by=/etc/apt/keyrings/rspamd.gpg] http://rspamd.com/apt-stable/ focal main" >> /etc/apt/sources.list.d/rspamd.list]]></command>
+						<command><![CDATA[apt-get update]]></command>
+					</commands>
+					<installs index="1">
+						<install><![CDATA[DEBIAN_FRONTEND=noninteractive apt-get -yq --no-install-recommends install rspamd]]></install>
+					</installs>
+					<commands index="2">
+						<command><![CDATA[mkdir -p /etc/rspamd/local.d/]]></command>
+						<command><![CDATA[mkdir -p /etc/rspamd/override.d/]]></command>
+						<command><![CDATA[mkdir -p /var/lib/rspamd/dkim/]]></command>
+					</commands>
+					<files index="1">
+						<file name="/etc/rspamd/local.d/actions.conf"
+							  chown="root:root" chmod="0644" backup="true">
+							<content><![CDATA[
+# Set rewrite subject to this value (%s is replaced by the original subject)
+subject = "***SPAM*** %s"
+]]>
+							</content>
+						</file>
+						<file name="/etc/rspamd/local.d/arc.conf"
+							  chown="root:root" chmod="0644" backup="true">
+							<content><![CDATA[
+try_fallback = true;
+### Enable DKIM signing for alias sender addresses
+allow_username_mismatch = true;
+path = "/var/lib/rspamd/dkim/$domain.$selector.key";
+selector_map = "/etc/rspamd/dkim_selectors.map";
+use_esld = false;
+]]>
+							</content>
+						</file>
+						<file name="/etc/rspamd/local.d/milter_headers.conf"
+							  chown="root:root" chmod="0644" backup="true">
+							<content><![CDATA[
+use = ["x-spamd-bar", "x-spam-level", "authentication-results"];
+authenticated_headers = ["authentication-results"];
+extended_spam_headers = true
+skip_local = false
+skip_authenticated = false
+]]>
+							</content>
+						</file>
+						<file name="/etc/rspamd/local.d/replies.conf"
+							  chown="root:root" chmod="0644" backup="true">
+							<content><![CDATA[
+## If a user has replied to an email, don’t mark other emails in the same thread as spam
+action = "no action";
+]]>
+							</content>
+						</file>
+						<file name="/etc/rspamd/local.d/settings.conf"
+							  chown="root:root" chmod="0644" backup="true">
+							<content><![CDATA[
+## Feel free to include your own settings or adjustments here, for example:
+#whitelist {
+#  priority = low;
+#  rcpt = "postmaster@example.com";
+#  want_spam = yes;
+#}
+
+## Include froxlor generated settings
+.include(try=true,priority=1,duplicate=merge) "{{settings.antispam.config_file}}"
+]]>
+							</content>
+						</file>
+					</files>
+					<commands index="3">
+						<command><![CDATA[cp /etc/rspamd/local.d/arc.conf /etc/rspamd/local.d/dkim_signing.conf]]></command>
+						<command><![CDATA[postconf -e "milter_protocol = 6"]]></command>
+						<command><![CDATA[postconf -e "milter_mail_macros = i {mail_addr} {client_addr} {client_name} {auth_authen}"]]></command>
+						<command><![CDATA[postconf -e "milter_default_action = accept"]]></command>
+						<command><![CDATA[postconf -e "smtpd_milters = inet:127.0.0.1:11332"]]></command>
+						<command><![CDATA[postconf -e "non_smtpd_milters = inet:127.0.0.1:11332"]]></command>
+						<command><![CDATA[chown -R _rspamd:_rspamd /var/lib/rspamd/dkim]]></command>
+						<command><![CDATA[service rspamd restart]]></command>
+					</commands>
+				</general>
+				<!-- rspamd -->
+				<daemon name="rspamd" title="Rspamd" default="true">
+					<include>//service[@type='antispam']/general/commands[@index=1]
+					</include>
+					<include>//service[@type='antispam']/general/installs[@index=1]
+					</include>
+					<include>//service[@type='antispam']/general/commands[@index=2]
+					</include>
+					<include>//service[@type='antispam']/general/files[@index=1]
+					</include>
+					<include>//service[@type='antispam']/general/commands[@index=3]
+					</include>
+				</daemon>
+			</service>
 			<!-- FTP services -->
 			<service type="ftp" title="{{lng.admin.configfiles.ftp}}">
 				<!-- Proftpd -->
@@ -3391,7 +3495,6 @@ ServerName                     "<SERVERNAME> FTP Server"
 ServerType			standalone
 DeferWelcome			off
 
-MultilineRFC2228		on
 DefaultServer			on
 ShowSymlinks			on
 
@@ -3728,7 +3831,6 @@ SQLNamedQuery get-quota-limit SELECT "ftp_users.username AS name, ftp_quotalimit
 SQLNamedQuery get-quota-tally SELECT "name, quota_type, bytes_in_used,bytes_out_used, bytes_xfer_used, files_in_used, files_out_used,files_xfer_used FROM ftp_quotatallies WHERE name = '%{0}' AND quota_type = '%{1}'"
 SQLNamedQuery update-quota-tally UPDATE "bytes_in_used = bytes_in_used + %{0}, bytes_out_used = bytes_out_used + %{1}, bytes_xfer_used = bytes_xfer_used + %{2}, files_in_used = files_in_used + %{3}, files_out_used= files_out_used + %{4}, files_xfer_used = files_xfer_used + %{5} WHERE name= '%{6}' AND quota_type = '%{7}'" ftp_quotatallies
 SQLNamedQuery insert-quota-tally INSERT "%{0}, %{1}, %{2}, %{3}, %{4},%{5}, %{6}, %{7}" ftp_quotatallies
-
 </IfModule>
 ]]>
 						</content>
@@ -3739,16 +3841,17 @@ SQLNamedQuery insert-quota-tally INSERT "%{0}, %{1}, %{2}, %{3}, %{4},%{5}, %{6}
 <IfModule mod_tls.c>
 TLSEngine                               on
 TLSLog                                  /var/log/proftpd/tls.log
-TLSProtocol                             TLSv1 TLSv1.1 TLSv1.2
+TLSProtocol                             TLSv1.2 TLSv1.3
 TLSRSACertificateFile                   /etc/ssl/certs/proftpd.crt
 TLSRSACertificateKeyFile                /etc/ssl/private/proftpd.key
 TLSECCertificateFile                    /etc/ssl/certs/proftpd_ec.crt
 TLSECCertificateKeyFile                 /etc/ssl/private/proftpd_ec.key
-TLSOptions                              NoCertRequest NoSessionReuseRequired
+# TLSCACertificateFile
+TLSOptions                              NoSessionReuseRequired
 TLSVerifyClient                         off
 
 # Are clients required to use FTP over TLS when talking to this server?
-#TLSRequired                             on
+TLSRequired                             on
 
 # Allow SSL/TLS renegotiations when the client requests them, but
 # do not force the renegotiations.  Some clients do not support
@@ -3759,6 +3862,37 @@ TLSVerifyClient                         off
 #TLSRenegotiate                          required off
 </IfModule>
 ]]>
+						</content>
+					</file>
+					<file name="/etc/proftpd/conf.d/99-froxlor-ratelimit.conf" chown="root:0"
+						  chmod="0644">
+						<content><![CDATA[
+<Class whitelist>
+From 127.0.0.1
+</Class>
+
+MaxLoginAttempts 3
+<IfModule mod_ban.c>
+ <IfClass whitelist>
+  BanEngine off
+ </IfClass>
+ <IfClass !whitelist>
+  BanEngine on
+ </IfClass>
+BanLog /var/log/proftpd/ban.log
+BanTable /etc/proftpd/ban.tab
+BanMessage "User %u was banned."
+BanOnEvent ClientConnectRate 10/00:00:02 02:00:00 "Stop connecting frequently"
+BanOnEvent MaxLoginAttempts 3/00:30:00 12:00:00
+BanOnEvent AnonRejectPasswords 1/01:00:00 99:99:99
+BanControlsACLs all allow user root
+</IfModule>
+
+<IfClass whitelist>
+BanEngine off
+DelayEngine off
+</IfClass>
+					]]>
 						</content>
 					</file>
 					<command><![CDATA[service proftpd restart]]></command>
@@ -3829,7 +3963,7 @@ no
 						</content>
 					</file>
 					<file name="/etc/pure-ftpd/db/mysql.conf" chown="root:0"
-						chmod="0644" backup="true">
+						chmod="0640" backup="true">
 						<content><![CDATA[
 ##############################################
 #                                            #
@@ -4156,8 +4290,8 @@ aliases:     files
 				<!-- Cronjob -->
 				<daemon name="cron" title="Cronjob for froxlor"
 					mandatory="true">
-					<install><![CDATA[apt-get install cron]]></install>
-					<command><![CDATA[ln -s <BASE_PATH>bin/froxlor-cli /usr/local/bin/froxlor-cli]]></command>
+					<install><![CDATA[DEBIAN_FRONTEND=noninteractive apt-get -yq --no-install-recommends install cron gnupg]]></install>
+					<command><![CDATA[[ ! -e /usr/local/bin/froxlor-cli ] && ln -s <BASE_PATH>bin/froxlor-cli /usr/local/bin/froxlor-cli]]></command>
 					<command><![CDATA[/usr/bin/php <BASE_PATH>bin/froxlor-cli froxlor:cron --run-task 99]]></command>
 					<command><![CDATA[{{settings.system.crondreload}}]]></command>
 				</daemon>

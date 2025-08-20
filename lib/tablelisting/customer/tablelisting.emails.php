@@ -49,6 +49,24 @@ return [
 				'field' => 'popaccountid',
 				'callback' => [Email::class, 'account'],
 			],
+			'm.spam_tag_level' => [
+				'label' => lng('antispam.spam_tag_level.title'),
+				'field' => 'spam_tag_level',
+			],
+			'm.spam_kill_level' => [
+				'label' => lng('antispam.spam_kill_level.title'),
+				'field' => 'spam_kill_level',
+			],
+			'm.bypass_spam' => [
+				'label' => lng('antispam.bypass_spam.title'),
+				'field' => 'bypass_spam',
+				'callback' => [Text::class, 'boolean'],
+			],
+			'm.policy_greylist' => [
+				'label' => lng('antispam.policy_greylist.title'),
+				'field' => 'policy_greylist',
+				'callback' => [Text::class, 'boolean'],
+			],
 			'm.iscatchall' => [
 				'label' => lng('emails.catchall'),
 				'field' => 'iscatchall',

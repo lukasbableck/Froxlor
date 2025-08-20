@@ -31,13 +31,15 @@ final class Froxlor
 {
 
 	// Main version variable
-	const VERSION = '2.0.23';
+	const VERSION = '2.2.8';
 
 	// Database version (YYYYMMDDC where C is a daily counter)
-	const DBVERSION = '202304260';
+	const DBVERSION = '202412030';
 
 	// Distribution branding-tag (used for Debian etc.)
 	const BRANDING = '';
+
+	const DOCS_URL = 'https://docs.froxlor.org';
 
 	/**
 	 * return path to where froxlor is installed, e.g.
@@ -50,6 +52,14 @@ final class Froxlor
 		return dirname(__DIR__, 2) . '/';
 	}
 
+	public static function getDocsUrl(): string
+	{
+		if (preg_match('/(.+)-(dev|beta|rc)\d+$/', self::VERSION)) {
+			return self::DOCS_URL . '/dev/';
+		}
+		return self::DOCS_URL . '/v' . self::getShortVersion() . '/';
+	}
+
 	/**
 	 * return basic version
 	 *
@@ -58,6 +68,16 @@ final class Froxlor
 	public static function getVersion(): string
 	{
 		return self::VERSION;
+	}
+
+	/**
+	 * return short basic version
+	 *
+	 * @return string
+	 */
+	public static function getShortVersion(): string
+	{
+		return explode(".", self::VERSION)[0] . '.' . explode(".", self::VERSION)[1];
 	}
 
 	/**
@@ -296,7 +316,7 @@ final class Froxlor
 	 * @param array|null $arr
 	 * @return void
 	 */
-	private static function parseVersionArray(array &$arr = null)
+	private static function parseVersionArray(?array &$arr)
 	{
 		// -dev or -beta or -rc ?
 		if (stripos($arr[count($arr) - 1], '-') !== false) {

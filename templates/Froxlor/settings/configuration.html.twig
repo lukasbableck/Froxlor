@@ -5,7 +5,7 @@
 		<i class="fa-solid fa-wrench"></i>
 		{{ lng('admin.configfiles.serverconfiguration') }}
 	</h5>
-	<span class="text-muted">{{ lng('admin.configfiles.description') }}</span>
+	<span class="text-body-secondary">{{ lng('admin.configfiles.description') }}</span>
 {% endblock %}
 
 {% block actions %}
@@ -79,7 +79,8 @@
 												(dtype == 'bind' and get_setting('system.bind_enable') == '1' and get_setting('system.dns_server') == 'Bind') or
 												(dtype == 'powerdns' and get_setting('system.bind_enable') == '1' and get_setting('system.dns_server') == 'PowerDNS') or
 												(dtype == 'proftpd' and get_setting('system.ftpserver') == 'proftpd') or
-												(dtype == 'pureftpd' and get_setting('system.ftpserver') == 'pureftpd')
+												(dtype == 'pureftpd' and get_setting('system.ftpserver') == 'pureftpd') or
+												(dtype == 'rspamd' and get_setting('antispam.activated') == '1')
 											%}
 												{% set recommended = true %}
 											{% endif %}
@@ -112,8 +113,8 @@
 				{{ lng('admin.configfiles.recommendednote') }}
 			</div>
 			<div class="col-12 col-md-6 text-end">
-				<button type="button" class="btn btn-outline-secondary" id="selectRecommendedConfig">{{ lng('admin.configfiles.selectrecommended') }}</button>
-				<button type="button" class="btn btn-outline-secondary" id="downloadSelectionAsJson">
+				<button type="button" class="btn btn-outline-secondary me-md-3" id="selectRecommendedConfig">{{ lng('admin.configfiles.selectrecommended') }}</button>
+				<button type="button" class="btn btn-outline-secondary me-md-3" id="downloadSelectionAsJson">
 					<i class="fa-solid fa-download"></i>
 					{{ lng('admin.configfiles.downloadselected') }}</button>
 				<button type="submit" class="btn btn-primary">{{ lng('update.proceed') }}</button>

@@ -65,13 +65,6 @@ return [
 						'select_var' => $domains,
 						'selected' => $result['aliasdomain']
 					],
-					'issubof' => [
-						'label' => lng('domains.issubof'),
-						'desc' => lng('domains.issubofinfo'),
-						'type' => 'select',
-						'select_var' => $subtodomains,
-						'selected' => $result['ismainbutsubto']
-					],
 					'associated_info' => [
 						'label' => lng('domains.associated_with_domain'),
 						'type' => 'label',
@@ -104,7 +97,13 @@ return [
 						'type' => 'date',
 						'value' => $result['termination_date'],
 						'size' => 10
-					]
+					],
+					'deactivated' => [
+						'label' => lng('admin.deactivated'),
+						'type' => 'checkbox',
+						'value' => '1',
+						'checked' => $result['deactivated']
+					],
 				]
 			],
 			'section_e' => [
@@ -130,7 +129,7 @@ return [
 						'selected' => $result['subcanemaildomain']
 					],
 					'dkim' => [
-						'visible' => Settings::Get('dkim.use_dkim') == '1',
+						'visible' => Settings::Get('antispam.activated') == '1',
 						'label' => 'DomainKeys',
 						'type' => 'checkbox',
 						'value' => '1',
@@ -211,6 +210,10 @@ return [
 						'checked' => $result['speciallogfile']
 					],
 					'speciallogverified' => [
+						'type' => 'hidden',
+						'value' => '0'
+					],
+					'emaildomainverified' => [
 						'type' => 'hidden',
 						'value' => '0'
 					],
@@ -434,20 +437,40 @@ return [
 			'section_d' => [
 				'title' => lng('admin.nameserversettings'),
 				'image' => 'icons/domain_edit.png',
-				'visible' => Settings::Get('system.bind_enable') == '1' && $userinfo['change_serversettings'] == '1',
+				'visible' => ($userinfo['change_serversettings'] == '1' && Settings::Get('system.bind_enable') == '1') || ($result['isemaildomain'] == '1' && (Settings::Get('spf.use_spf') == '1' || Settings::Get('dmarc.use_dmarc') == '1') || Settings::Get('antispam.activated') == '1' && $result['dkim'] == '1' && $result['dkim_pubkey'] != ''),
 				'fields' => [
 					'isbinddomain' => [
+						'visible' => $userinfo['change_serversettings'] == '1' && Settings::Get('system.bind_enable') == '1',
 						'label' => lng('admin.createzonefile'),
 						'type' => 'checkbox',
 						'value' => '1',
 						'checked' => $result['isbinddomain']
 					],
 					'zonefile' => [
+						'visible' => $userinfo['change_serversettings'] == '1' && Settings::Get('system.bind_enable') == '1',
 						'label' => lng('admin.custombindzone'),
 						'desc' => lng('admin.bindzonewarning'),
 						'type' => 'text',
 						'value' => $result['zonefile']
-					]
+					],
+					'spf_entry' => [
+						'visible' => (Settings::Get('spf.use_spf') == '1' && $result['isemaildomain'] == '1'),
+						'label' => lng('antispam.required_spf_dns'),
+						'type' => 'longtext',
+						'value' => (string)(new \Froxlor\Dns\DnsEntry('@', 'TXT', \Froxlor\Dns\Dns::encloseTXTContent(Settings::Get('spf.spf_entry'))))
+					],
+					'dmarc_entry' => [
+						'visible' => (Settings::Get('dmarc.use_dmarc') == '1' && $result['isemaildomain'] == '1'),
+						'label' => lng('antispam.required_dmarc_dns'),
+						'type' => 'longtext',
+						'value' => (string)(new \Froxlor\Dns\DnsEntry('_dmarc', 'TXT', \Froxlor\Dns\Dns::encloseTXTContent(Settings::Get('dmarc.dmarc_entry'))))
+					],
+					'dkim_entry' => [
+						'visible' => (Settings::Get('antispam.activated') == '1' && $result['dkim'] == '1' && $result['dkim_pubkey'] != ''),
+						'label' => lng('antispam.required_dkim_dns'),
+						'type' => 'longtext',
+						'value' => (string)(new \Froxlor\Dns\DnsEntry('dkim' . $result['dkim_id'] . '._domainkey', 'TXT', \Froxlor\Dns\Dns::encloseTXTContent('v=DKIM1; k=rsa; p='.trim($result['dkim_pubkey']))))
+					],
 				]
 			]
 		]
