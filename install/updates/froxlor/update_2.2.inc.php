@@ -209,6 +209,14 @@ if (Froxlor::isDatabaseVersion('202409280')) {
 	Settings::AddNew("antispam.default_policy_greylist", "1");
 	Update::lastStepStatus(0);
 
+	Update::showUpdateStep("Adding new settings");
+	Settings::AddNew("system.http3_support", "0");
+	Update::lastStepStatus(0);
+
+	Update::showUpdateStep("Adding http3 field to domain table");
+	Database::query("ALTER TABLE `" . TABLE_PANEL_DOMAINS . "` ADD `http3` tinyint(1) NOT NULL default '0' AFTER `http2`;");
+	Update::lastStepStatus(0);
+
 	Froxlor::updateToDbVersion('202411200');
 }
 
